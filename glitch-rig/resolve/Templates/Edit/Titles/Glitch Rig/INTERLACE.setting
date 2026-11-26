@@ -49,6 +49,8 @@
 						colour = Input { Value = 4 },
 						hue = Input { Value = 0.5 },
 						contrast = Input { Value = 0.5 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},

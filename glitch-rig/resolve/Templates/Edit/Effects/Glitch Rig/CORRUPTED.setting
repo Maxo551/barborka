@@ -46,6 +46,8 @@
 						scanlines = Input { Value = 0 },
 						glitch = Input { Value = 0.5 },
 						vignette = Input { Value = 0.3 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},

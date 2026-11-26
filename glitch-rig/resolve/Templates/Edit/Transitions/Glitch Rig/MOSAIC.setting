@@ -31,6 +31,8 @@
 						glow = Input { Value = 0.25 },
 						rgb = Input { Value = 0.25 },
 						grain = Input { Value = 0 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},

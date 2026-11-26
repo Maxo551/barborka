@@ -74,6 +74,8 @@
 						lookColour = Input { Value = 0.5 },
 						rainSpeed = Input { Value = 0.5 },
 						words = Input { Value = "GLITCH RIG" },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},

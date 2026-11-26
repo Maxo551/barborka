@@ -45,13 +45,31 @@ local function grMain(tool, req, name, body)
   end
 end
 
--- Comp frame range and rate, so effects animate from the start of the clip and
--- transitions know how far through they are.
-local function grRange(tool)
-  local a = tool.Comp:GetAttrs() or {}
-  local rs = a.COMPN_RenderStart or a.COMPN_GlobalStart or 0
-  local re = a.COMPN_RenderEnd or a.COMPN_GlobalEnd or rs + 1
-  return rs, re
+-- The comp's frame range, so effects animate from the start of the clip and
+-- transitions know how far through they are. Resolve's Fuse API has no
+-- Comp:GetAttrs(), so the templates feed the range in through expressions
+-- (comp.RenderStart / comp.RenderEnd); the other sources are fallbacks.
+local function grRange(tool, P)
+  local rs, re
+  -- both default to -1, and stay 0/0 if the expressions did not evaluate
+  if P and P.rangeStart and P.rangeEnd and P.rangeEnd > P.rangeStart then
+    rs, re = P.rangeStart, P.rangeEnd
+  end
+  if not rs then
+    pcall(function()
+      local a, b = tool.Comp.RenderStart, tool.Comp.RenderEnd
+      if type(a) == "number" and type(b) == "number" and b > a then rs, re = a, b end
+    end)
+  end
+  if not rs then
+    pcall(function()
+      local a = tool.Comp:GetAttrs()
+      if a and a.COMPN_RenderEnd then rs, re = a.COMPN_RenderStart or 0, a.COMPN_RenderEnd end
+    end)
+  end
+  if GR_DEBUG then print(string.format("[Glitch Rig]   comp range %s..%s", tostring(rs), tostring(re))) end
+  rs = rs or 0
+  return rs, re or rs + 100000
 end
 
 local function grFps(tool)

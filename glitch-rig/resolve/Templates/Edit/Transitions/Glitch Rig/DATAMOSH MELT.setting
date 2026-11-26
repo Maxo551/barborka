@@ -32,6 +32,8 @@
 						flashes = Input { Value = 0 },
 						motion = Input { Value = 0 },
 						colourSpeed = Input { Value = 0.5 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},

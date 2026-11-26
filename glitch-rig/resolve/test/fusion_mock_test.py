@@ -43,7 +43,7 @@ end
 
 self = {
   Comp = {
-    GetAttrs = function(c) return MOCK.attrs end,
+    RenderStart = 0, RenderEnd = 30,
     GetPrefs = function(c, k) assert(k == "Comp.FrameFormat.Rate") return 30 end,
   },
 }
@@ -165,6 +165,11 @@ def run_fuse(path):
     for img_id in INPUTS.get(name, ['Input']):
         G.MOCK.images[img_id] = G.MOCK.mkimg(1920, 1080)
     runs = 0
+    # the range the templates feed in through comp.RenderStart / comp.RenderEnd expressions
+    G.MOCK.values = lua.table_from({'rangeStart': 0, 'rangeEnd': 24})
+    req = lua.table_from({'Time': 12}); req.GetFlags = lua.eval('function(self) return 0 end')
+    G.Process(req)
+    assert any('comp range 0..24' in l for l in G.MOCK.printed.values()), f'{name}: template range not used'
     for key, values in SWEEPS[name]:
         assert key in ids, f'{name}: no control {key}'
         for v in values:

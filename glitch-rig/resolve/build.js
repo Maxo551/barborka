@@ -50,6 +50,9 @@ function userControls(effect) {
 }
 
 const PROGRESS = [B('autoProgress', 'AUTO PROGRESS', 1), S('progress', 'PROGRESS', 0)];
+// filled by the templates' expressions (comp.RenderStart / comp.RenderEnd): Fuse code
+// cannot read the comp's frame range itself in Resolve
+const RANGE = [{ id: 'rangeStart', label: 'Range Start', kind: 'hidden', def: -1 }, { id: 'rangeEnd', label: 'Range End', kind: 'hidden', def: -1 }];
 
 const FUSES = {
   GR_DotMatrix: {
@@ -109,9 +112,9 @@ const PROCESS = {
   local src = GR_IMG.Input:GetValue(req)
   grProbe("Input", src)
   local W, H = grSize(src)
-  local rs = grRange(self)
-  local t = (req.Time - rs) / grFps(self)
   local P = grValues(req)
+  local rs = grRange(self, P)
+  local t = (req.Time - rs) / grFps(self)
   local mode = grRound(P.mode)
   local glyphy = mode >= 2 and mode <= 4
   local cell = math.max(3, grRound(math.min(W, H) * grM(P.size, 0.004, 0.034) * (glyphy and 1.45 or 1)))
@@ -150,10 +153,10 @@ const PROCESS = {
   local src = GR_IMG.Input:GetValue(req)
   grProbe("Input", src)
   local W, H = grSize(src)
-  local rs = grRange(self)
+  local P = grValues(req)
+  local rs = grRange(self, P)
   local fps = grFps(self)
   local t = (req.Time - rs) / fps
-  local P = grValues(req)
   local mode = grRound(P.mode)
   local img = grRun(req, self.Comp, "GRGrade", GR_K.GRGrade, GR_P.GRGrade, function(p)
     grCommon(p, W, H, t, H / 540)
@@ -179,9 +182,9 @@ const PROCESS = {
   local src = GR_IMG.Input:GetValue(req)
   grProbe("Input", src)
   local W, H = grSize(src)
-  local rs = grRange(self)
-  local t = (req.Time - rs) / grFps(self)
   local P = grValues(req)
+  local rs = grRange(self, P)
+  local t = (req.Time - rs) / grFps(self)
   local function smooth(x) x = math.max(0, math.min(1, x)) return x * x * (3 - 2 * x) end
   local start, up, peak, down = grM(P.startsAfter, 0, 3), grM(P.comeUp, 0.2, 4), grM(P.peak, 0.5, 6), grM(P.comeDown, 0.2, 6)
   local tt, env = t - start, 0
@@ -210,9 +213,9 @@ const PROCESS = {
   local src = GR_IMG.Input:GetValue(req)
   grProbe("Input", src)
   local W, H = grSize(src)
-  local rs = grRange(self)
-  local t = (req.Time - rs) / grFps(self)
   local P = grValues(req)
+  local rs = grRange(self, P)
+  local t = (req.Time - rs) / grFps(self)
   local delay = math.max(1, grRound(grM(P.delay, 1, 10)))
   local h = {}
   for k = 1, 6 do h[k] = grAt(GR_IMG.Input, req, req.Time - k * delay) or h[k - 1] or src end
@@ -236,10 +239,9 @@ const PROCESS = {
   if not Bi then grOut(req, A) return end
   if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
-  local rs, re = grRange(self)
-  if GR_DEBUG then print(string.format("[Glitch Rig]   range %s..%s", tostring(rs), tostring(re))) end
-  local t = (req.Time - rs) / grFps(self)
   local P = grValues(req)
+  local rs, re = grRange(self, P)
+  local t = (req.Time - rs) / grFps(self)
   local prog = P.progress
   if grRound(P.autoProgress) == 1 then prog = (req.Time - rs) / math.max(1, re - rs) end
   if GR_DEBUG then print(string.format("[Glitch Rig]   progress %.3f", prog)) end
@@ -269,10 +271,9 @@ const PROCESS = {
   if not Bi then grOut(req, A) return end
   if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
-  local rs, re = grRange(self)
-  if GR_DEBUG then print(string.format("[Glitch Rig]   range %s..%s", tostring(rs), tostring(re))) end
-  local fps = grFps(self)
   local P = grValues(req)
+  local rs, re = grRange(self, P)
+  local fps = grFps(self)
   local span = math.max(1, re - rs)
   local function progAt(time)
     if grRound(P.autoProgress) == 1 then return (time - rs) / span end
@@ -344,11 +345,11 @@ const PROCESS = {
   local src = GR_IMG.Input:GetValue(req)
   grProbe("Input", src)
   local W, H = grSize(src)
-  local rs, re = grRange(self)
+  local P = grValues(req)
+  local rs, re = grRange(self, P)
   local fps = grFps(self)
   local t = (req.Time - rs) / fps
   local dur = math.max(1, re - rs) / fps
-  local P = grValues(req)
   local anim = 0
   if t < 0.35 then anim = 1 - t / 0.35 elseif t > dur - 0.3 then anim = (t - (dur - 0.3)) / 0.3 end
   local col = GR_TITLE_COLOURS[grRound(P.colour) + 1] or { 1, 1, 1 }
@@ -370,7 +371,7 @@ const PROCESS = {
 // ------------------------------------------------------------------ .fuse writer
 function controlsOf(name) {
   const f = FUSES[name];
-  return f.recipe.concat(userControls(f.effect), f.extra || []);
+  return f.recipe.concat(userControls(f.effect), f.extra || [], RANGE);
 }
 
 function luaInput(c) {
@@ -380,6 +381,8 @@ function luaInput(c) {
   } else if (c.kind === 'combo') {
     lines.push('    LINKID_DataType = "Number",', '    INPID_InputControl = "ComboControl",', `    INP_Default = ${c.def},`, '    INP_Integer = true,', '    ICD_Width = 1,');
     c.options.forEach((o) => lines.push(`    { CCS_AddString = ${luaStr(o)} },`));
+  } else if (c.kind === 'hidden') {
+    lines.push('    LINKID_DataType = "Number",', '    INPID_InputControl = "SliderControl",', `    INP_Default = ${num(c.def)},`, '    IC_Visible = false,');
   } else if (c.kind === 'check') {
     lines.push('    LINKID_DataType = "Number",', '    INPID_InputControl = "CheckboxControl",', `    INP_Default = ${c.def},`, '    INP_Integer = true,');
   } else {
@@ -501,6 +504,8 @@ function settingSource(card) {
     inputs.push(`Input${n++} = InstanceInput { SourceOp = "Glitch", Source = "words", Name = "WORDS" }`);
   }
   const valLines = Object.entries(vals).map(([k, v]) => `\t\t\t\t\t\t${k} = Input { Value = ${typeof v === 'string' ? luaStr(v) : num(v)} },`);
+  valLines.push('\t\t\t\t\t\trangeStart = Input { Value = 0, Expression = "comp.RenderStart" },');
+  valLines.push('\t\t\t\t\t\trangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },');
   let tools = '';
   if (card.effect === 'title') {
     const st = card.look.style;

@@ -48,6 +48,8 @@
 						glitch = Input { Value = 0 },
 						vignette = Input { Value = 0.7 },
 						hud = Input { Value = 0 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
 					},
 					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
 				},
