@@ -1,0 +1,43 @@
+{
+	Tools = ordered() {
+		GR_GLITCH_BLOCKS = MacroOperator {
+			CtrlWZoom = false,
+			NameSet = true,
+			CustomData = { HelpPage = "https://github.com/Maxo551/barborka/tree/main/glitch-rig/resolve" },
+			Inputs = ordered() {
+				MainInput1 = InstanceInput { SourceOp = "Glitch", Source = "Background" },
+				MainInput2 = InstanceInput { SourceOp = "Glitch", Source = "Foreground" },
+				Input1 = InstanceInput { SourceOp = "Glitch", Source = "intensity", Name = "INTENSITY", Default = 0.5 },
+				Input2 = InstanceInput { SourceOp = "Glitch", Source = "colour", Name = "COLOUR", Default = 0 },
+				Input3 = InstanceInput { SourceOp = "Glitch", Source = "direction", Name = "DIRECTION", Default = 0 },
+				Input4 = InstanceInput { SourceOp = "Glitch", Source = "flash", Name = "FLASH", Default = 1 },
+				Input5 = InstanceInput { SourceOp = "Glitch", Source = "glow", Name = "GLOW", Default = 0.25 },
+				Input6 = InstanceInput { SourceOp = "Glitch", Source = "rgb", Name = "RGB SPLIT", Default = 0.25 },
+				Input7 = InstanceInput { SourceOp = "Glitch", Source = "grain", Name = "GRAIN", Default = 0 },
+			},
+			Outputs = {
+				MainOutput1 = InstanceOutput { SourceOp = "Glitch", Source = "Output" },
+			},
+			ViewInfo = GroupInfo { Pos = { 0, 0 } },
+			Tools = ordered() {
+				Glitch = Fuse.GR_Transition {
+					CtrlWZoom = false,
+					Inputs = {
+						mode = Input { Value = 13 },
+						intensity = Input { Value = 0.5 },
+						colour = Input { Value = 0 },
+						direction = Input { Value = 0 },
+						flash = Input { Value = 1 },
+						glow = Input { Value = 0.25 },
+						rgb = Input { Value = 0.25 },
+						grain = Input { Value = 0 },
+						rangeStart = Input { Value = 0, Expression = "comp.RenderStart" },
+						rangeEnd = Input { Value = 0, Expression = "comp.RenderEnd" },
+					},
+					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+				},
+			},
+		},
+	},
+	ActiveTool = "GR_GLITCH_BLOCKS",
+}

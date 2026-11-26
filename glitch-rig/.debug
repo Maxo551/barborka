@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Remote DevTools while developing: http://localhost:8088 (AE) / :8089 (Premiere) -->
+<ExtensionList>
+  <Extension Id="com.glitchrig.panel">
+    <HostList>
+      <Host Name="AEFT" Port="8088"/>
+      <Host Name="PPRO" Port="8089"/>
+    </HostList>
+  </Extension>
+</ExtensionList>
