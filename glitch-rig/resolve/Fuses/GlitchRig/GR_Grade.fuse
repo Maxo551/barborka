@@ -1143,6 +1143,49 @@ GR_TITLE_COLOURS = { { 1, 0.188235, 0.270588 }, { 1, 0.603922, 0.121569 }, { 1, 
 -- GLITCH RIG — shared Lua runtime, inlined into every generated .fuse.
 
 local GR_PB = {}
+GR_DEBUG = false
+local GR_CALLS = 0
+
+-- Diagnostics: size and centre pixel of an image, printed to Workspace > Console.
+local function grProbe(label, img)
+  if not GR_DEBUG then return end
+  if not img then print("[Glitch Rig]   " .. label .. ": nil") return end
+  local ok, msg = pcall(function()
+    local w = img.Width or img.DataWindow:Width()
+    local h = img.Height or img.DataWindow:Height()
+    local px = Pixel()
+    img:GetPixel(math.floor(w / 2), math.floor(h / 2), px)
+    return string.format("%dx%d centre=(%.3f, %.3f, %.3f, %.3f)", w, h, px.R, px.G, px.B, px.A)
+  end)
+  print("[Glitch Rig]   " .. label .. ": " .. tostring(msg))
+end
+
+local function grOut(req, img)
+  grProbe("output", img)
+  OutImage:Set(req, img)
+end
+
+-- Runs a Process body; the first two frames print diagnostics, and an error
+-- prints a traceback and passes the clip through instead of leaving black.
+local function grMain(tool, req, name, body)
+  GR_CALLS = GR_CALLS + 1
+  GR_DEBUG = GR_CALLS <= 2
+  if GR_DEBUG then print(string.format("[Glitch Rig] %s frame %s", name, tostring(req.Time))) end
+  local ok, err = xpcall(body, function(e)
+    local okTb, tb = pcall(debug.traceback, tostring(e), 2)
+    return okTb and tb or tostring(e)
+  end)
+  if not ok then
+    print("[Glitch Rig] " .. name .. " error: " .. tostring(err))
+    for _, id in ipairs({ "Input", "Background", "Foreground" }) do
+      local inp = GR_IMG and GR_IMG[id]
+      if inp then
+        local img = inp:GetValue(req)
+        if img then OutImage:Set(req, img) return end
+      end
+    end
+  end
+end
 
 -- Comp frame range and rate, so effects animate from the start of the clip and
 -- transitions know how far through they are.
@@ -1187,7 +1230,11 @@ end
 -- { kernelArgName, image }. Returns the output image (nil if it failed).
 local function grRun(req, comp, kname, code, pdecl, setp, inputs, like, w, h)
   local out = grImage(comp, like, w, h)
-  local node = DVIPComputeNode(req, kname, code, kname .. "Params", pdecl)
+  local okNode, node = pcall(DVIPComputeNode, req, kname, code, kname .. "Params", pdecl)
+  if not okNode or not node then
+    print("[Glitch Rig] GPU kernels unavailable (DVIPComputeNode): " .. tostring(node))
+    return nil
+  end
   local p = GR_PB[kname]
   if not (p and pcall(function() setp(p); node:SetParamBlock(p) end)) then
     p = node:GetParamBlock(pdecl)
@@ -1199,10 +1246,12 @@ local function grRun(req, comp, kname, code, pdecl, setp, inputs, like, w, h)
   for i = 1, #inputs do node:AddInput(inputs[i][1], inputs[i][2]) end
   node:AddOutput("dst", out)
   if not node:RunSession(req) then
-    print("[Glitch Rig] kernel " .. kname .. " failed")
-    dump(node:GetErrorLog())
+    print("[Glitch Rig] kernel " .. kname .. " failed:")
+    local okLog, log = pcall(function() return node:GetErrorLog() end)
+    print(tostring(okLog and log or "(no error log)"))
     return nil
   end
+  grProbe(kname, out)
   return out
 end
 
@@ -1233,18 +1282,18 @@ local function grFinish(req, comp, img, t, o)
     local function blur(src, dx, dy)
       return grRun(req, comp, "GRBlur", GR_K.GRBlur, GR_P.GRBlur, function(p) grCommon(p, W, H, t, s); p.dx = dx; p.dy = dy end, { { "src", src } }, img)
     end
-    local a = blur(ex, 4 * s, 0)
-    local b = blur(a, 0, 4 * s)
-    a = blur(b, 8 * s, 0)
-    glowT = blur(a, 0, 8 * s) or img
-    if (o.streaks or 0) > 0.001 then
+    local a = ex and blur(ex, 4 * s, 0)
+    local b = a and blur(a, 0, 4 * s)
+    a = b and blur(b, 8 * s, 0)
+    glowT = (a and blur(a, 0, 8 * s)) or img
+    if ex and (o.streaks or 0) > 0.001 then
       local function streak(src, step)
         return grRun(req, comp, "GRStreak", GR_K.GRStreak, GR_P.GRStreak, function(p) grCommon(p, W, H, t, s); p.stepPx = step end, { { "src", src } }, img)
       end
       local st = streak(ex, 4 * s)
-      st = streak(st, 16 * s)
-      st = streak(st, 56 * s)
-      streakT = streak(st, 160 * s) or img
+      st = st and streak(st, 16 * s)
+      st = st and streak(st, 56 * s)
+      streakT = (st and streak(st, 160 * s)) or img
     end
   end
   local tint = o.streakTint or { 0.75, 0.9, 1.0 }
@@ -1463,7 +1512,9 @@ function Create()
 end
 
 function Process(req)
+  grMain(self, req, "GR_Grade", function()
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs = grRange(self)
   local fps = grFps(self)
@@ -1486,7 +1537,8 @@ function Process(req)
     p.fps = fps
     p.hudColor[0] = 0.784; p.hudColor[1] = 1.0; p.hudColor[2] = 0.784
   end, { { "src", src } }, src)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, {
+  grOut(req, grFinish(req, self.Comp, img, t, {
     glow = P.glow, thresh = 0.5, rgb = P.rgb, scanlines = P.scanlines, grain = mode == 0 and P.noise * 0.6 or 0, vignette = P.vignette,
   }) or src)
+  end)
 end

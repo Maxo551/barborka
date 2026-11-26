@@ -26,8 +26,13 @@ function dump(x) print("DUMP", x) end
 
 local function mkimg(w, h)
   return { Width = w, Height = h, XScale = 1, YScale = 1, Depth = 4,
-    DataWindow = { Width = function() return w end, Height = function() return h end } }
+    DataWindow = { Width = function() return w end, Height = function() return h end },
+    GetPixel = function(img, x, y, p) assert(x >= 0 and x < w and y >= 0 and y < h, "GetPixel out of range"); p.R, p.G, p.B, p.A = 0.5, 0.5, 0.5, 1 end }
 end
+function Pixel(t) return t or { R = 0, G = 0, B = 0, A = 0 } end
+MOCK.printed = {}
+local realPrint = print
+function print(...) local parts = {} for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end MOCK.printed[#MOCK.printed + 1] = table.concat(parts, " ") end
 MOCK.mkimg = mkimg
 
 function Image(a)
@@ -174,6 +179,10 @@ def run_fuse(path):
                 G.Process(req)
                 assert G.MOCK.out is not None, f'{name}: no output at t={t} {key}={v}'
                 runs += 1
+    errors = [l for l in G.MOCK.printed.values() if ' error: ' in l or 'failed' in l or 'unavailable' in l]
+    assert not errors, f'{name}: ' + errors[0]
+    diag = [l for l in G.MOCK.printed.values() if l.startswith('[Glitch Rig]')]
+    assert diag, f'{name}: no diagnostics printed'
     kernels = sorted(set(G.MOCK.runs.values()))
     return name, ids, runs, kernels
 

@@ -107,6 +107,7 @@ SKIP.add('size@title');
 const PROCESS = {
   GR_DotMatrix: `
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs = grRange(self)
   local t = (req.Time - rs) / grFps(self)
@@ -140,13 +141,14 @@ const PROCESS = {
     for i = 0, 31 do p.words[i] = words[i + 1] or GR_CHARS[" "] end
     p.wordCount = math.max(1, math.min(32, #words))
   end, { { "src", src } }, src)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, {
+  grOut(req, grFinish(req, self.Comp, img, t, {
     glow = P.glow, streaks = P.streaks, thresh = 0.6, rgb = P.rgb, scanline = P.scanLine, scanlines = P.scanlines,
     grain = P.grain, vignette = P.vignette, flicker = P.flicker, hue = P.lookColour - 0.5, streakTint = { P.stR, P.stG, P.stB },
   }) or src)`,
 
   GR_Grade: `
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs = grRange(self)
   local fps = grFps(self)
@@ -169,12 +171,13 @@ const PROCESS = {
     p.fps = fps
     p.hudColor[0] = 0.784; p.hudColor[1] = 1.0; p.hudColor[2] = 0.784
   end, { { "src", src } }, src)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, {
+  grOut(req, grFinish(req, self.Comp, img, t, {
     glow = P.glow, thresh = 0.5, rgb = P.rgb, scanlines = P.scanlines, grain = mode == 0 and P.noise * 0.6 or 0, vignette = P.vignette,
   }) or src)`,
 
   GR_Trip: `
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs = grRange(self)
   local t = (req.Time - rs) / grFps(self)
@@ -201,10 +204,11 @@ const PROCESS = {
     p.seed = P.variation * 7
     p.hasHist = 1
   end, { { "src", src }, { "h1", h1 }, { "h2", h2 }, { "h3", h3 } }, src)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, { glow = 0.15 + P.dose * 0.25, thresh = 0.6, vignette = 0.25 }) or src)`,
+  grOut(req, grFinish(req, self.Comp, img, t, { glow = 0.15 + P.dose * 0.25, thresh = 0.6, vignette = 0.25 }) or src)`,
 
   GR_Echo: `
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs = grRange(self)
   local t = (req.Time - rs) / grFps(self)
@@ -222,21 +226,25 @@ const PROCESS = {
     p.offset = grM(P.drift, -1, 1)
     p.variant = grRound(P.variant)
   end, { { "src", src }, { "h1", h[1] }, { "h2", h[2] }, { "h3", h[3] }, { "h4", h[4] }, { "h5", h[5] }, { "h6", h[6] } }, src)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, { glow = P.glow, thresh = 0.55, rgb = P.rgb }) or src)`,
+  grOut(req, grFinish(req, self.Comp, img, t, { glow = P.glow, thresh = 0.55, rgb = P.rgb }) or src)`,
 
   GR_Transition: `
   local A = GR_IMG.Background:GetValue(req)
   local Bi = GR_IMG.Foreground:GetValue(req)
-  if not Bi then OutImage:Set(req, A) return end
-  if not A then OutImage:Set(req, Bi) return end
+  grProbe("Background (A)", A)
+  grProbe("Foreground (B)", Bi)
+  if not Bi then grOut(req, A) return end
+  if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
   local rs, re = grRange(self)
+  if GR_DEBUG then print(string.format("[Glitch Rig]   range %s..%s", tostring(rs), tostring(re))) end
   local t = (req.Time - rs) / grFps(self)
   local P = grValues(req)
   local prog = P.progress
   if grRound(P.autoProgress) == 1 then prog = (req.Time - rs) / math.max(1, re - rs) end
-  if prog <= 0 then OutImage:Set(req, A) return end
-  if prog >= 1 then OutImage:Set(req, Bi) return end
+  if GR_DEBUG then print(string.format("[Glitch Rig]   progress %.3f", prog)) end
+  if prog <= 0 then grOut(req, A) return end
+  if prog >= 1 then grOut(req, Bi) return end
   local env = math.sin(prog * math.pi)
   local dirs = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
   local d = dirs[grRound(P.direction) + 1] or dirs[1]
@@ -251,15 +259,18 @@ const PROCESS = {
     p.diry = d[2]
     p.tint[0] = tint[1]; p.tint[1] = tint[2]; p.tint[2] = tint[3]
   end, { { "A", A }, { "B", Bi } }, A)
-  OutImage:Set(req, grFinish(req, self.Comp, img, t, { glow = P.glow * env, thresh = 0.6, rgb = P.rgb * env, grain = P.grain * env }) or A)`,
+  grOut(req, grFinish(req, self.Comp, img, t, { glow = P.glow * env, thresh = 0.6, rgb = P.rgb * env, grain = P.grain * env }) or A)`,
 
   GR_Datamosh: `
   local A = GR_IMG.Background:GetValue(req)
   local Bi = GR_IMG.Foreground:GetValue(req)
-  if not Bi then OutImage:Set(req, A) return end
-  if not A then OutImage:Set(req, Bi) return end
+  grProbe("Background (A)", A)
+  grProbe("Foreground (B)", Bi)
+  if not Bi then grOut(req, A) return end
+  if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
   local rs, re = grRange(self)
+  if GR_DEBUG then print(string.format("[Glitch Rig]   range %s..%s", tostring(rs), tostring(re))) end
   local fps = grFps(self)
   local P = grValues(req)
   local span = math.max(1, re - rs)
@@ -268,8 +279,9 @@ const PROCESS = {
     return P.progress
   end
   local prog = progAt(req.Time)
-  if prog <= 0 then OutImage:Set(req, A) return end
-  if prog >= 1 then OutImage:Set(req, Bi) return end
+  if GR_DEBUG then print(string.format("[Glitch Rig]   progress %.3f", prog)) end
+  if prog <= 0 then grOut(req, A) return end
+  if prog >= 1 then grOut(req, Bi) return end
   local short = math.min(W, H)
   local bsf = ({ 0.012, 0.022, 0.04 })[grRound(P.blockSize) + 1] or 0.022
   local bs = math.max(4, grRound(short * bsf))
@@ -326,10 +338,11 @@ const PROCESS = {
     p.flashes = grRound(P.flashes) == 0 and 1 or 0; p.frameSeed = st.frame
   end, { { "mosh", st.mosh }, { "curB", Bi } }, A)
   local v = grRound(P.variant)
-  OutImage:Set(req, grFinish(req, self.Comp, look, t, { glow = v == 1 and 0.6 or (v == 2 and 0.35 or 0.1), thresh = 0.55 }) or A)`,
+  grOut(req, grFinish(req, self.Comp, look, t, { glow = v == 1 and 0.6 or (v == 2 and 0.35 or 0.1), thresh = 0.55 }) or A)`,
 
   GR_Title: `
   local src = GR_IMG.Input:GetValue(req)
+  grProbe("Input", src)
   local W, H = grSize(src)
   local rs, re = grRange(self)
   local fps = grFps(self)
@@ -339,7 +352,7 @@ const PROCESS = {
   local anim = 0
   if t < 0.35 then anim = 1 - t / 0.35 elseif t > dur - 0.3 then anim = (t - (dur - 0.3)) / 0.3 end
   local col = GR_TITLE_COLOURS[grRound(P.colour) + 1] or { 1, 1, 1 }
-  OutImage:Set(req, grRun(req, self.Comp, "GRTitle", GR_K.GRTitle, GR_P.GRTitle, function(p)
+  grOut(req, grRun(req, self.Comp, "GRTitle", GR_K.GRTitle, GR_P.GRTitle, function(p)
     grCommon(p, W, H, t, H / 540)
     p.style = grRound(P.style)
     p.amount = grM(P.amount, 0.1, 1.6)
@@ -428,7 +441,9 @@ ${imgInputs}
   })
 end
 
-function Process(req)${PROCESS[name]}
+function Process(req)
+  grMain(self, req, ${luaStr(name)}, function()${PROCESS[name]}
+  end)
 end
 `;
 }
