@@ -119,7 +119,8 @@ install/               inštalačné skripty
 - **Neotestované v reálnom AE/Premiere** (tu nie sú k dispozícii). Pred ostrým použitím
   vyskúšaj ExtendScript časti na svojom stroji: hlavne `overwriteClip`,
   `setOverrideFrameRate`, `addTracks` cez QE a záložný export snímok.
-- Rýchlosť a time-remap klipu v Premiere sa zatiaľ ignorujú. Zdroj sa natiahne na veľkosť
+- Rýchlosť klipu (Premiere), stretch aj time remap vrstvy (AE) sa sledujú snímok po snímku.
+  Obrátené prehrávanie (reverse) zatiaľ nie je overené. Zdroj sa natiahne na veľkosť
   sekvencie alebo kompozície.
 - HAND FRAME načítava model z CDN, takže v paneli potrebuje internet. Bez neho prejde do
   režimu AUTO.

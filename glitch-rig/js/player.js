@@ -180,8 +180,11 @@
   }
 
   // ------------------------------------------------------------------ offline render
-  // job: {card, params, srcA, srcB, startA, startB, duration, fps, width, height,
+  // job: {card, params, srcA, srcB, timeA(t), timeB(t), duration, fps, width, height,
   //       transparent, onFrame(canvas, index, count) -> Promise, onProgress(f), signal}
+  // timeA/timeB map overlay time t (seconds from the first rendered frame) to the
+  // time each source is seeked to, so speed, stretch and time remap carry through
+  // every frame. startA/startB (plain offsets) are still accepted.
   async function renderSequence(job) {
     const canvas = document.createElement('canvas');
     canvas.width = job.width;
@@ -192,13 +195,16 @@
     const n = Math.max(1, Math.round(job.duration * job.fps));
     const isTrans = job.card.tab === 'transitions';
     const freezeA = job.card.effect === 'mosh';
+    const timeA = job.timeA || ((t) => (job.startA || 0) + t);
+    const timeB = job.timeB || ((t) => (job.startB || 0) + t);
     for (let i = 0; i < n; i++) {
       if (job.signal && job.signal.aborted) throw new Error('cancelled');
       const t = i / job.fps;
-      await job.srcA.seek(freezeA ? job.startA : job.startA + t);
+      // datamosh smears the last frame of the outgoing clip, one frame before the cut
+      await job.srcA.seek(freezeA ? timeA(-1 / job.fps) : timeA(t));
       e.upload(a, job.srcA.el);
       if (isTrans) {
-        await job.srcB.seek(job.startB + t);
+        await job.srcB.seek(timeB(t));
         e.upload(b, job.srcB.el);
       }
       e.time = t;

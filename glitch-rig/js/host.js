@@ -50,7 +50,9 @@
   }
 
   // Fallback when Chromium cannot decode the clip (ProRes, some HEVC): ask the
-  // host to export composited frames as PNG and read them back.
+  // host to export composited frames as PNG and read them back. These are
+  // timeline frames, so a transition's A/B are kept apart by time (A before the
+  // cut, B from the cut on) in applyInHost.
   class HostFrameSource {
     constructor(dir, which, w, h) {
       this.dir = dir; this.which = which; this.width = w; this.height = h;
@@ -71,7 +73,21 @@
     play() {} pause() {} update() {}
   }
 
-  async function openClip(p, dir, which, w, h, srcTime) {
+  // Overlay time -> source-media time for one clip, following its speed
+  // (rate) or, for remapped After Effects layers, the sampled remap curve.
+  function mapper(src, anchorComp, anchorSrc, fps, placeAt) {
+    const m = src.map;
+    if (m && m.src && m.src.length) {
+      return (t) => {
+        const i = Math.round((placeAt + t - m.t0) * fps);
+        return m.src[Math.max(0, Math.min(m.src.length - 1, i))];
+      };
+    }
+    const rate = typeof src.rate === 'number' && isFinite(src.rate) && src.rate !== 0 ? src.rate : 1;
+    return (t) => anchorSrc + (placeAt + t - anchorComp) * rate;
+  }
+
+  async function openClip(p, dir, which, w, h) {
     const v = new GR.Sources.VideoSource(fileUrl(p), p.split(/[\\/]/).pop());
     try {
       await Promise.race([v.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))]);
@@ -79,7 +95,7 @@
       return v;
     } catch (e) {
       console.warn('[GR] cannot decode', p, '- using host frames');
-      return new HostFrameSource(dir, which, w, h, srcTime);
+      return new HostFrameSource(dir, which, w, h);
     }
   }
 
@@ -120,29 +136,28 @@
     mkdirp(fs, path, dir);
     const prefix = 'glitchrig-' + slug + '-' + tag + '_';
 
-    let srcA, srcB, startA = 0, startB = 0, duration, placeAt, transparent = false;
+    // timeA/timeB: overlay time -> where to seek each source. Decoded clips get
+    // source-media time (signed: VideoSource.seek clamps each frame, so missing
+    // pre-roll or handles hold the first/last frame without shifting the rest);
+    // host-frame fallbacks get timeline time.
+    let srcA, srcB, timeA, timeB, duration, placeAt, transparent = false;
     if (kind === 'look') {
       const secs = GR.LENGTH_SECONDS[params.length];
       duration = Math.max(1 / fps, Math.min(secs || info.remaining, info.remaining));
       srcA = await openClip(info.path, dir, 'a', W, H);
-      startA = info.srcAt;
       placeAt = info.start;
-      if (srcA instanceof HostFrameSource) { startA = info.start; }
+      timeA = srcA instanceof HostFrameSource ? (t) => placeAt + t : mapper(info, info.start, info.srcAt, fps, placeAt);
     } else if (kind === 'transition') {
       const D = GR.transitionSeconds(card, params);
       duration = D;
       srcA = await openClip(info.a.path, dir, 'a', W, H);
       srcB = await openClip(info.b.path, dir, 'b', W, H);
-      const hostA = srcA instanceof HostFrameSource, hostB = srcB instanceof HostFrameSource;
-      if (card.effect === 'mosh') {
-        placeAt = info.cut;
-        startA = hostA ? info.cut - 1 / fps : Math.max(0, info.a.cutSrc - 1 / fps);
-        startB = hostB ? info.cut : info.b.cutSrc;
-      } else {
-        placeAt = info.cut - D / 2;
-        startA = hostA ? info.cut - D / 2 : Math.max(0, info.a.cutSrc - D / 2);
-        startB = hostB ? info.cut - D / 2 : Math.max(0, info.b.cutSrc - D / 2);
-      }
+      // datamosh starts on the cut, the other transitions straddle it
+      placeAt = card.effect === 'mosh' ? info.cut : info.cut - D / 2;
+      const lastA = info.cut - 1 / fps;
+      // on the timeline A only exists before the cut and B only from the cut on
+      timeA = srcA instanceof HostFrameSource ? (t) => Math.min(placeAt + t, lastA) : mapper(info.a, info.cut, info.a.cutSrc, fps, placeAt);
+      timeB = srcB instanceof HostFrameSource ? (t) => Math.max(placeAt + t, info.cut) : mapper(info.b, info.cut, info.b.cutSrc, fps, placeAt);
     } else {
       duration = GR.TITLE_SECONDS[params.length] || 3;
       srcA = blankSource(W, H);
@@ -152,7 +167,7 @@
 
     const files = [];
     await GR.renderSequence({
-      card, params, srcA, srcB: srcB || srcA, startA, startB, duration, fps,
+      card, params, srcA, srcB: srcB || srcA, timeA, timeB, duration, fps,
       width: W, height: H, transparent,
       onProgress: (f) => ui.progress(f),
       async onFrame(canvas, i) {

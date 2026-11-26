@@ -55,6 +55,21 @@ function grAeSrcTime(layer, compTime) {
     return (compTime - layer.startTime) * 100 / layer.stretch;
 }
 
+// How a layer's source time advances: a constant rate for stretched layers, or
+// the remap curve sampled per frame over [t0, t1] for time-remapped ones.
+function grAeTiming(layer, comp, t0, t1) {
+    try {
+        if (layer.timeRemapEnabled) {
+            var fps = comp.frameRate, src = [];
+            var n = Math.min(Math.ceil((t1 - t0) * fps) + 1, 7200);
+            var prop = layer.property('ADBE Time Remapping');
+            for (var i = 0; i < n; i++) src.push(prop.valueAtTime(t0 + i / fps, false));
+            return { map: { t0: t0, src: src } };
+        }
+    } catch (e) {}
+    return { rate: 100 / layer.stretch };
+}
+
 function grAeTarget(kind) {
     var comp = app.project.activeItem;
     if (!comp || !(comp instanceof CompItem)) return grFail('Open a composition in After Effects first.');
@@ -76,8 +91,10 @@ function grAeTarget(kind) {
         var cut = B.inPoint;
         base.cut = cut;
         base.layerIndex = Math.min(A.index, B.index);
-        base.a = { path: grAeFootagePath(A), cutSrc: grAeSrcTime(A, Math.min(cut, A.outPoint)) };
-        base.b = { path: grAeFootagePath(B), cutSrc: grAeSrcTime(B, cut) };
+        // transitions last at most 3 s, so a +-3 s window around the cut covers them
+        var ta = grAeTiming(A, comp, cut - 3, cut + 3), tb = grAeTiming(B, comp, cut - 3, cut + 3);
+        base.a = { path: grAeFootagePath(A), cutSrc: grAeSrcTime(A, Math.min(cut, A.outPoint)), rate: ta.rate, map: ta.map };
+        base.b = { path: grAeFootagePath(B), cutSrc: grAeSrcTime(B, cut), rate: tb.rate, map: tb.map };
         base.name = A.name + ' > ' + B.name;
         return grOk(base);
     }
@@ -90,6 +107,9 @@ function grAeTarget(kind) {
     base.start = start;
     base.srcAt = grAeSrcTime(L, start);
     base.remaining = L.outPoint - start;
+    var tm = grAeTiming(L, comp, start, L.outPoint);
+    base.rate = tm.rate;
+    base.map = tm.map;
     base.layerIndex = L.index;
     base.name = L.name;
     return grOk(base);
@@ -150,6 +170,19 @@ function grPpPath(item) {
     return null;
 }
 
+// Clip speed as a source-seconds-per-timeline-second rate (reverse = negative).
+function grPpRate(item) {
+    try {
+        var s = Number(item.getSpeed());
+        if (s > 0 && s < 1000) {
+            var rev = false;
+            try { rev = !!item.isSpeedReversed(); } catch (e1) {}
+            return rev ? -s : s;
+        }
+    } catch (e) {}
+    return 1;
+}
+
 function grPpTarget(kind) {
     var seq = app.project.activeSequence;
     if (!seq) return grFail('Open a sequence in Premiere Pro first.');
@@ -183,8 +216,8 @@ function grPpTarget(kind) {
         if (bestD > 2) return grFail('Move the playhead closer to the cut you want to transition.');
         base.cut = best.B.start.seconds;
         base.track = best.t;
-        base.a = { path: grPpPath(best.A), cutSrc: best.A.outPoint.seconds };
-        base.b = { path: grPpPath(best.B), cutSrc: best.B.inPoint.seconds };
+        base.a = { path: grPpPath(best.A), cutSrc: best.A.outPoint.seconds, rate: grPpRate(best.A) };
+        base.b = { path: grPpPath(best.B), cutSrc: best.B.inPoint.seconds, rate: grPpRate(best.B) };
         base.name = best.A.name + ' > ' + best.B.name;
         return grOk(base);
     }
@@ -208,7 +241,8 @@ function grPpTarget(kind) {
     var start = (cti > target.start.seconds && cti < target.end.seconds - fr) ? cti : target.start.seconds;
     base.path = grPpPath(target);
     base.start = start;
-    base.srcAt = target.inPoint.seconds + (start - target.start.seconds);
+    base.rate = grPpRate(target);
+    base.srcAt = target.inPoint.seconds + (start - target.start.seconds) * base.rate;
     base.remaining = target.end.seconds - start;
     base.track = tIndex;
     base.name = target.name;
