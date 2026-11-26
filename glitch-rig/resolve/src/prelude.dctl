@@ -1,0 +1,102 @@
+// GLITCH RIG — shared DCTL helpers for the Resolve/Fusion kernels.
+// Written for every Fusion GPU backend (CUDA, OpenCL, Metal): no swizzles, no
+// function overloading, float literals with an f suffix, and only the builtins
+// that Fusion provides everywhere (_floor, _fabs, _sinf, _cosf, _powf, _sqrtf,
+// _expf, _atan2f, _fmaxf, _fminf, _fmod). Images in Fusion are bottom-up, like GL.
+
+#define GR_PI 3.14159265f
+
+__DEVICE__ float gr_fract(float x) { return x - _floor(x); }
+__DEVICE__ float gr_mod(float x, float y) { return x - y * _floor(x / y); }
+__DEVICE__ float gr_mix(float a, float b, float t) { return a + (b - a) * t; }
+__DEVICE__ float gr_clamp(float x, float a, float b) { return _fminf(_fmaxf(x, a), b); }
+__DEVICE__ float gr_sat(float x) { return gr_clamp(x, 0.0f, 1.0f); }
+__DEVICE__ float gr_step(float e, float x) { return x < e ? 0.0f : 1.0f; }
+__DEVICE__ float gr_smooth(float a, float b, float x) {
+  float t = gr_sat((x - a) / (b - a));
+  return t * t * (3.0f - 2.0f * t);
+}
+__DEVICE__ float gr_len(float x, float y) { return _sqrtf(x * x + y * y); }
+
+__DEVICE__ float3 gr_v3(float x, float y, float z) { return to_float3(x, y, z); }
+__DEVICE__ float3 gr_mix3(float3 a, float3 b, float t) { return to_float3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+__DEVICE__ float3 gr_scale3(float3 a, float s) { return to_float3(a.x * s, a.y * s, a.z * s); }
+__DEVICE__ float3 gr_add3(float3 a, float3 b) { return to_float3(a.x + b.x, a.y + b.y, a.z + b.z); }
+__DEVICE__ float3 gr_sub3(float3 a, float3 b) { return to_float3(a.x - b.x, a.y - b.y, a.z - b.z); }
+__DEVICE__ float3 gr_mul3(float3 a, float3 b) { return to_float3(a.x * b.x, a.y * b.y, a.z * b.z); }
+__DEVICE__ float3 gr_max3(float3 a, float3 b) { return to_float3(_fmaxf(a.x, b.x), _fmaxf(a.y, b.y), _fmaxf(a.z, b.z)); }
+__DEVICE__ float3 gr_clamp3(float3 a, float lo, float hi) { return to_float3(gr_clamp(a.x, lo, hi), gr_clamp(a.y, lo, hi), gr_clamp(a.z, lo, hi)); }
+__DEVICE__ float3 gr_abs3(float3 a) { return to_float3(_fabs(a.x), _fabs(a.y), _fabs(a.z)); }
+__DEVICE__ float gr_dist3(float3 a, float3 b) { float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z; return _sqrtf(dx * dx + dy * dy + dz * dz); }
+__DEVICE__ float gr_luma(float3 c) { return c.x * 0.2126f + c.y * 0.7152f + c.z * 0.0722f; }
+
+__DEVICE__ float gr_hash11(float p) {
+  p = gr_fract(p * 0.1031f);
+  p = p * (p + 33.33f);
+  p = p * (p + p);
+  return gr_fract(p);
+}
+__DEVICE__ float gr_hash21(float x, float y) {
+  float a = gr_fract(x * 0.1031f), b = gr_fract(y * 0.1031f), c = gr_fract(x * 0.1031f);
+  float d = a * (b + 33.33f) + b * (c + 33.33f) + c * (a + 33.33f);
+  a += d; b += d; c += d;
+  return gr_fract((a + b) * c);
+}
+__DEVICE__ float2 gr_hash22(float x, float y) {
+  float a = gr_fract(x * 0.1031f), b = gr_fract(y * 0.1030f), c = gr_fract(x * 0.0973f);
+  float d = a * (b + 33.33f) + b * (c + 33.33f) + c * (a + 33.33f);
+  a += d; b += d; c += d;
+  return to_float2(gr_fract((a + b) * c), gr_fract((a + c) * b));
+}
+__DEVICE__ float gr_noise(float x, float y) {
+  float ix = _floor(x), iy = _floor(y), fx = x - ix, fy = y - iy;
+  float ux = fx * fx * (3.0f - 2.0f * fx), uy = fy * fy * (3.0f - 2.0f * fy);
+  float a = gr_hash21(ix, iy), b = gr_hash21(ix + 1.0f, iy);
+  float c = gr_hash21(ix, iy + 1.0f), d = gr_hash21(ix + 1.0f, iy + 1.0f);
+  return gr_mix(gr_mix(a, b, ux), gr_mix(c, d, ux), uy);
+}
+__DEVICE__ float gr_fbm(float x, float y) {
+  float a = 0.5f, s = 0.0f;
+  for (int i = 0; i < 5; i++) { s += a * gr_noise(x, y); x = x * 2.03f + 17.1f; y = y * 2.03f + 17.1f; a *= 0.5f; }
+  return s;
+}
+
+__DEVICE__ float3 gr_hsv2rgb(float h, float s, float v) {
+  float r = _fabs(gr_fract(h + 0.0f) * 6.0f - 3.0f) - 1.0f;
+  float g = _fabs(gr_fract(h + 2.0f / 3.0f) * 6.0f - 3.0f) - 1.0f;
+  float b = _fabs(gr_fract(h + 1.0f / 3.0f) * 6.0f - 3.0f) - 1.0f;
+  return to_float3(v * gr_mix(1.0f, gr_sat(r), s), v * gr_mix(1.0f, gr_sat(g), s), v * gr_mix(1.0f, gr_sat(b), s));
+}
+__DEVICE__ float3 gr_rgb2hsv(float3 c) {
+  float mx = _fmaxf(c.x, _fmaxf(c.y, c.z)), mn = _fminf(c.x, _fminf(c.y, c.z));
+  float d = mx - mn, h = 0.0f;
+  if (d > 1e-6f) {
+    if (mx == c.x) h = (c.y - c.z) / d;
+    else if (mx == c.y) h = 2.0f + (c.z - c.x) / d;
+    else h = 4.0f + (c.x - c.y) / d;
+    h = gr_fract(h / 6.0f + 1.0f);
+  }
+  return to_float3(h, mx > 1e-6f ? d / mx : 0.0f, mx);
+}
+__DEVICE__ float3 gr_hueShift(float3 c, float h) {
+  if (h == 0.0f) return c;
+  float3 v = gr_rgb2hsv(c);
+  return gr_hsv2rgb(gr_fract(v.x + h), v.y, v.z);
+}
+__DEVICE__ float3 gr_saturate(float3 c, float s) { float l = gr_luma(c); return to_float3(l + (c.x - l) * s, l + (c.y - l) * s, l + (c.z - l) * s); }
+__DEVICE__ float3 gr_ramp3(float t, float3 a, float3 b, float3 c) { return t < 0.5f ? gr_mix3(a, b, t * 2.0f) : gr_mix3(b, c, t * 2.0f - 1.0f); }
+__DEVICE__ float3 gr_heat(float t) {
+  t = gr_sat(t);
+  float3 c = gr_mix3(gr_v3(0.0f, 0.0f, 0.15f), gr_v3(0.35f, 0.0f, 0.65f), gr_smooth(0.0f, 0.25f, t));
+  c = gr_mix3(c, gr_v3(0.9f, 0.1f, 0.25f), gr_smooth(0.2f, 0.45f, t));
+  c = gr_mix3(c, gr_v3(1.0f, 0.55f, 0.0f), gr_smooth(0.45f, 0.7f, t));
+  c = gr_mix3(c, gr_v3(1.0f, 1.0f, 0.55f), gr_smooth(0.7f, 0.95f, t));
+  return c;
+}
+
+// Sample an image with normalized, bottom-up coordinates.
+__DEVICE__ float3 gr_tex(__TEXTURE2D__ t, float u, float v) {
+  float4 c = _tex2DVecN(t, u, v, 15);
+  return to_float3(c.x, c.y, c.z);
+}
+__DEVICE__ float4 gr_tex4(__TEXTURE2D__ t, float u, float v) { return _tex2DVecN(t, u, v, 15); }

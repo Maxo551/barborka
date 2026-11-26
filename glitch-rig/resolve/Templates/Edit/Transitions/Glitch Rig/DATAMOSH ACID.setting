@@ -1,0 +1,42 @@
+{
+	Tools = ordered() {
+		GR_DATAMOSH_ACID = MacroOperator {
+			CtrlWZoom = false,
+			NameSet = true,
+			CustomData = { HelpPage = "https://github.com/Maxo551/barborka/tree/main/glitch-rig/resolve" },
+			Inputs = ordered() {
+				MainInput1 = InstanceInput { SourceOp = "Glitch", Source = "Background" },
+				MainInput2 = InstanceInput { SourceOp = "Glitch", Source = "Foreground" },
+				Input1 = InstanceInput { SourceOp = "Glitch", Source = "blend", Name = "BLEND", Default = 0 },
+				Input2 = InstanceInput { SourceOp = "Glitch", Source = "blockSize", Name = "BLOCK SIZE", Default = 1 },
+				Input3 = InstanceInput { SourceOp = "Glitch", Source = "intensity", Name = "INTENSITY", Default = 0.5 },
+				Input4 = InstanceInput { SourceOp = "Glitch", Source = "frames", Name = "FRAMES", Default = 0 },
+				Input5 = InstanceInput { SourceOp = "Glitch", Source = "flashes", Name = "FLASHES", Default = 0 },
+				Input6 = InstanceInput { SourceOp = "Glitch", Source = "motion", Name = "MOTION", Default = 0 },
+				Input7 = InstanceInput { SourceOp = "Glitch", Source = "colourSpeed", Name = "COLOUR SPEED", Default = 0.5 },
+			},
+			Outputs = {
+				MainOutput1 = InstanceOutput { SourceOp = "Glitch", Source = "Output" },
+			},
+			ViewInfo = GroupInfo { Pos = { 0, 0 } },
+			Tools = ordered() {
+				Glitch = Fuse.GR_Datamosh {
+					CtrlWZoom = false,
+					Inputs = {
+						variant = Input { Value = 3 },
+						drip = Input { Value = 0 },
+						blend = Input { Value = 0 },
+						blockSize = Input { Value = 1 },
+						intensity = Input { Value = 0.5 },
+						frames = Input { Value = 0 },
+						flashes = Input { Value = 0 },
+						motion = Input { Value = 0 },
+						colourSpeed = Input { Value = 0.5 },
+					},
+					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+				},
+			},
+		},
+	},
+	ActiveTool = "GR_DATAMOSH_ACID",
+}

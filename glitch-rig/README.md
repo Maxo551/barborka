@@ -6,6 +6,9 @@ klip a výsledok položí na stopu nad ním.
 
 ![Panel – looks](docs/panel-looks.jpg)
 
+**DaVinci Resolve (free aj Studio):** natívne Fusion nástroje a šablóny do Effects Library
+sú v priečinku [`resolve/`](resolve/README.md).
+
 Rovnaký `index.html` beží aj v obyčajnom prehliadači ako demo. APPLY tam efekt nahrá do
 video súboru (.webm).
 
@@ -111,6 +114,7 @@ js/player.js           živý náhľad, náhľadové obrázky kariet, offline re
 js/host.js             most do AE/Premiere (CEP + Node) a nahrávanie v prehliadači
 jsx/host.jsx           ExtendScript: výber cieľa, import a umiestnenie, export snímok
 install/               inštalačné skripty
+resolve/               verzia pre DaVinci Resolve (Fuses + šablóny, generované z katalógu)
 ```
 
 ## Stav a obmedzenia

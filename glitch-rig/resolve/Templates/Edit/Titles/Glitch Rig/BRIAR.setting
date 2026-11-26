@@ -1,0 +1,59 @@
+{
+	Tools = ordered() {
+		GR_BRIAR = MacroOperator {
+			CtrlWZoom = false,
+			NameSet = true,
+			CustomData = { HelpPage = "https://github.com/Maxo551/barborka/tree/main/glitch-rig/resolve" },
+			Inputs = ordered() {
+				Input1 = InstanceInput { SourceOp = "Text", Source = "StyledText", Name = "TYPE" },
+				Input2 = InstanceInput { SourceOp = "Text", Source = "Font", Name = "FONT", ControlGroup = 1 },
+				Input3 = InstanceInput { SourceOp = "Text", Source = "Style", ControlGroup = 1 },
+				Input4 = InstanceInput { SourceOp = "Text", Source = "Size", Name = "SIZE", Default = 0.12 },
+				Input5 = InstanceInput { SourceOp = "Glitch", Source = "tint", Name = "TINT", Default = 0 },
+				Input6 = InstanceInput { SourceOp = "Glitch", Source = "saturation", Name = "SATURATION", Default = 0.5 },
+				Input7 = InstanceInput { SourceOp = "Glitch", Source = "amount", Name = "AMOUNT", Default = 0.5 },
+				Input8 = InstanceInput { SourceOp = "Glitch", Source = "blur", Name = "BLUR", Default = 0 },
+				Input9 = InstanceInput { SourceOp = "Glitch", Source = "brightness", Name = "BRIGHTNESS", Default = 0.5 },
+				Input10 = InstanceInput { SourceOp = "Glitch", Source = "colour", Name = "COLOUR", Default = 6 },
+				Input11 = InstanceInput { SourceOp = "Glitch", Source = "hue", Name = "HUE", Default = 0.5 },
+				Input12 = InstanceInput { SourceOp = "Glitch", Source = "contrast", Name = "CONTRAST", Default = 0.5 },
+			},
+			Outputs = {
+				MainOutput1 = InstanceOutput { SourceOp = "Glitch", Source = "Output" },
+			},
+			ViewInfo = GroupInfo { Pos = { 0, 0 } },
+			Tools = ordered() {
+				Text = TextPlus {
+					CtrlWZoom = false,
+					Inputs = {
+						UseFrameFormatSettings = Input { Value = 1 },
+						Width = Input { Value = 1920 },
+						Height = Input { Value = 1080 },
+						StyledText = Input { Value = "GLITCH RIG" },
+						Font = Input { Value = "Georgia" },
+						Style = Input { Value = "Bold Italic" },
+						Size = Input { Value = 0.12 },
+					},
+					ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+				},
+				Glitch = Fuse.GR_Title {
+					CtrlWZoom = false,
+					Inputs = {
+						Input = Input { SourceOp = "Text", Source = "Output" },
+						style = Input { Value = 4 },
+						tint = Input { Value = 0 },
+						saturation = Input { Value = 0.5 },
+						amount = Input { Value = 0.5 },
+						blur = Input { Value = 0 },
+						brightness = Input { Value = 0.5 },
+						colour = Input { Value = 6 },
+						hue = Input { Value = 0.5 },
+						contrast = Input { Value = 0.5 },
+					},
+					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+				},
+			},
+		},
+	},
+	ActiveTool = "GR_BRIAR",
+}

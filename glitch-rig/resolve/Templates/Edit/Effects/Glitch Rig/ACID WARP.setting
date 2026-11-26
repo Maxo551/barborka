@@ -1,0 +1,48 @@
+{
+	Tools = ordered() {
+		GR_ACID_WARP = MacroOperator {
+			CtrlWZoom = false,
+			NameSet = true,
+			CustomData = { HelpPage = "https://github.com/Maxo551/barborka/tree/main/glitch-rig/resolve" },
+			Inputs = ordered() {
+				MainInput1 = InstanceInput { SourceOp = "Glitch", Source = "Input" },
+				Input1 = InstanceInput { SourceOp = "Glitch", Source = "dose", Name = "DOSE", Default = 0.5 },
+				Input2 = InstanceInput { SourceOp = "Glitch", Source = "comeUp", Name = "COME UP", Default = 0.5 },
+				Input3 = InstanceInput { SourceOp = "Glitch", Source = "peak", Name = "PEAK", Default = 0.5 },
+				Input4 = InstanceInput { SourceOp = "Glitch", Source = "comeDown", Name = "COME DOWN", Default = 0 },
+				Input5 = InstanceInput { SourceOp = "Glitch", Source = "colours", Name = "COLOURS", Default = 1 },
+				Input6 = InstanceInput { SourceOp = "Glitch", Source = "tracers", Name = "TRACERS", Default = 0.5 },
+				Input7 = InstanceInput { SourceOp = "Glitch", Source = "patternSpeed", Name = "PATTERN SPEED", Default = 0.5 },
+				Input8 = InstanceInput { SourceOp = "Glitch", Source = "patternColours", Name = "PATTERN COLOURS", Default = 0 },
+				Input9 = InstanceInput { SourceOp = "Glitch", Source = "warp", Name = "WARP", Default = 0.6 },
+				Input10 = InstanceInput { SourceOp = "Glitch", Source = "startsAfter", Name = "STARTS AFTER", Default = 0 },
+				Input11 = InstanceInput { SourceOp = "Glitch", Source = "variation", Name = "VARIATION", Default = 0.5 },
+			},
+			Outputs = {
+				MainOutput1 = InstanceOutput { SourceOp = "Glitch", Source = "Output" },
+			},
+			ViewInfo = GroupInfo { Pos = { 0, 0 } },
+			Tools = ordered() {
+				Glitch = Fuse.GR_Trip {
+					CtrlWZoom = false,
+					Inputs = {
+						variant = Input { Value = 2 },
+						dose = Input { Value = 0.5 },
+						comeUp = Input { Value = 0.5 },
+						peak = Input { Value = 0.5 },
+						comeDown = Input { Value = 0 },
+						colours = Input { Value = 1 },
+						tracers = Input { Value = 0.5 },
+						patternSpeed = Input { Value = 0.5 },
+						patternColours = Input { Value = 0 },
+						warp = Input { Value = 0.6 },
+						startsAfter = Input { Value = 0 },
+						variation = Input { Value = 0.5 },
+					},
+					ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+				},
+			},
+		},
+	},
+	ActiveTool = "GR_ACID_WARP",
+}
