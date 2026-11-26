@@ -66,6 +66,8 @@ jas a kontrast. Titulok sa renderuje s priehľadným pozadím a pri štarte a ko
 
 Ak Chromium v paneli video nevie dekódovať (napr. ProRes), panel si snímky vyžiada
 priamo od AE (`saveFrameToPng`) alebo Premiere (`exportFramePNG`).
+Tieto snímky sú z časovej osi, takže obsahujú aj vrstvy nad klipom. Pri prechode sa A berie
+len pred strihom a B až od strihu (za hranou sa drží krajný snímok).
 
 ## Inštalácia
 
