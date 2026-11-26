@@ -34,7 +34,7 @@
       R('dose', 'DOSE'), R('comeUp', 'COME UP'), R('peak', 'PEAK'), R('comeDown', 'COME DOWN', 0),
       C('colours', 'COLOURS', ['NATURAL', 'RAINBOW', 'NEON', 'INVERT'], 0), R('tracers', 'TRACERS'),
       R('patternSpeed', 'PATTERN SPEED'), C('patternColours', 'PATTERN COLOURS', ['MATCH', 'RAINBOW', 'GOLD'], 0),
-      R('warp', 'WARP'), LENGTH, R('startsAfter', 'STARTS AFTER', 0.25), R('variation', 'VARIATION'),
+      R('warp', 'WARP'), LENGTH, R('startsAfter', 'STARTS AFTER', 0), R('variation', 'VARIATION'),
     ],
     clones: [
       R('clones', 'CLONES', 0.6), R('delay', 'DELAY', 0.3), R('fade', 'FADE'),

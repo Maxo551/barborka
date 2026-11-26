@@ -205,6 +205,8 @@
     }
     play() { this.playing = true; this.el.play().catch(() => {}); }
     pause() { this.playing = false; this.el.pause(); }
+    // release the decoder when another clip replaces this one
+    stop() { this.el.pause(); this.el.removeAttribute('src'); this.el.load(); }
     update() {}
     get currentTime() { return this.el.currentTime; }
     // Frame-accurate seek used by the renderer.

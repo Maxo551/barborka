@@ -23,7 +23,7 @@ vec3 palette(float L, vec3 sc, vec2 p){
   vec3 col;
   if (pmode < .5) col = saturateC(sc / max(max(sc.r, max(sc.g, sc.b)), .05), 1.25) * (.08 + L);
   else if (pmode < 1.5) col = mix(c0, c1, L);
-  else if (pmode < 2.5) { float h = fract(L * .55 + p.x * .55 + p.y * .35 + time * .02); col = mix(c0, hsv2rgb(vec3(h, .55, 1.)), .7) * (.12 + L * 1.15); }
+  else if (pmode < 2.5) { float h = fract(L * .55 + p.x * .55 + p.y * .35 + time * .02); col = mix(c0, hsv2rgb(vec3(h, .55, 1.)), .7) * (.2 + L * 1.35); }
   else if (pmode < 3.5) col = hsv2rgb(vec3(fract(p.x * .9 + p.y * .35 + time * .04 + L * .25), .75, 1.)) * (.1 + L);
   else if (pmode < 4.5) col = heat(L);
   else col = ramp3(L, c0, c1, c2);
@@ -65,9 +65,10 @@ void main(){
   float edge = clamp(length(vec2(lx, ly)) * 2.5, 0., 1.);
   if (invert > .5) L = 1. - L;
   L = pow(clamp(L, 0., 1.), mix(1.25, .45, darkDetail));
-  L *= .45 + brighten * 1.3;
-  L = mix(L, max(L, edge * 1.1), depth);
-  L = clamp(smoothstep(shadows * shadows * .5, .95, L), 0., 1.);
+  L *= .75 + brighten * 1.1;
+  L = mix(L, max(L, edge * 1.2), depth);
+  float floorL = shadows * .22;
+  L = clamp((L - floorL) / (1. - floorL), 0., 1.);
 
   // falling code rain, one stream per column
   float colSeed = hash11(ci.x * 1.731 + 3.1);
@@ -82,7 +83,7 @@ void main(){
 
   float A, V = L;
   if (mode < .5) {
-    float r = mix(.12, .54, dotSize) * (.3 + .7 * sqrt(L));
+    float r = mix(.18, .6, dotSize) * (.4 + .6 * sqrt(L));
     A = smoothstep(r, r - .14, length(f - .5));
   } else if (mode < 1.5) {
     float r = mix(.2, .56, dotSize) * (.35 + .65 * sqrt(L));
@@ -95,12 +96,12 @@ void main(){
     A = (1. - smoothstep(.8, 1., d)) * (lit + spec * 1.2);
     V = clamp(L * .8 + spec * .5, 0., 1.);
   } else if (mode < 2.5) {
-    A = glyph(floor(L * (glyphCount - 1.) + .5), f, gscale);
-    V = .25 + .75 * L;
+    A = glyph(floor((.12 + .88 * L) * (glyphCount - 1.) + .5), f, gscale);
+    V = .3 + .8 * L;
   } else if (mode < 3.5) {
     float gi = floor(hash21(ci + floor(time * flickRate * (.3 + hash21(ci.yx)))) * glyphCount);
     A = glyph(gi, f, gscale);
-    V = clamp(L * (1. - rain * .65 + rain * trail * 1.7) + isHead * rain * .7, 0., 1.);
+    V = clamp(L * 1.35 * (1. - rain * .3 + rain * trail * 1.2) + isHead * rain * .7, 0., 1.);
   } else if (mode < 4.5) {
     A = glyph(mod(ci.x + ci.y * 7. + floor(time * (1. + rainSpeed * 6.)), glyphCount), f, gscale);
     V = .2 + .8 * L;
@@ -109,7 +110,9 @@ void main(){
     A = step(max(q.x, q.y), mix(.2, .47, dotSize)) * (.35 + .65 * step(.08, L));
   }
 
-  vec3 col = palette(V, sc, uv) * A;
+  // glyph strokes cover less of a cell than a dot does, so they get more gain
+  float gain = (mode > 1.5 && mode < 4.5) ? 1.7 : 1.;
+  vec3 col = palette(V, sc, uv) * A * gain;
   if (mode < 3.5 && mode > 2.5) col += vec3(.75) * isHead * rain * A;
   // rain overlay for non-glyph looks
   if (rainGlyphs > .5 && rain > 0.) {
@@ -135,7 +138,9 @@ void main(){
           const setKey = SET_KEYS[P.chars] || V.set || 'symbols';
           const atlas = BFX.Glyphs.atlas(e, setKey, P.text || V.words);
           const short = Math.min(ctx.w, ctx.h);
-          const cell = Math.max(3, Math.round(short * M(P.size, 0.004, 0.034)));
+          // glyphs need bigger cells than dots to stay readable
+          const glyphy = V.mode >= 2 && V.mode <= 4;
+          const cell = Math.max(3, Math.round(short * M(P.size, 0.004, 0.034) * (glyphy ? 1.45 : 1)));
           const c = (k, d) => BFX.util.hexToRgb(V[k] || d);
           e.draw(e.program('dotmatrix', FRAG), {
             src: ctx.src,
