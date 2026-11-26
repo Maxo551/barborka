@@ -787,6 +787,65 @@ GR_TITLE_COLOURS = { { 1, 0.188235, 0.270588 }, { 1, 0.603922, 0.121569 }, { 1, 
 
 local GR_PB = {}
 
+-- Crash guard. The first runs of every risky step (a GPU kernel, fetching other
+-- frames, reading a pixel) leave a marker file while they run. If Resolve dies
+-- in the middle, the next start finds the marker, switches that step off for
+-- good (listed in glitchrig-disabled.txt in the temp folder) and passes the clip
+-- through instead, so a crash cannot repeat on every project open.
+local GR_GUARD = { dir = nil, disabled = nil, runs = {} }
+local function grGuardDir()
+  if GR_GUARD.dir then return GR_GUARD.dir end
+  local d
+  pcall(function() d = os.getenv("TEMP") or os.getenv("TMPDIR") or os.getenv("TMP") end)
+  if (not d or d == "") and self and self.Comp then pcall(function() d = self.Comp:MapPath("Temp:") end) end
+  d = tostring(d or "."):gsub("[/\\]+$", "")
+  GR_GUARD.dir = d
+  return d
+end
+local function grGuardPath(name) return grGuardDir() .. "/glitchrig-" .. name end
+local function grGuardLoad()
+  if GR_GUARD.disabled then return end
+  GR_GUARD.disabled = {}
+  pcall(function()
+    local f = io.open(grGuardPath("disabled.txt"), "r")
+    if f then
+      for line in f:lines() do if line ~= "" then GR_GUARD.disabled[line] = true end end
+      f:close()
+    end
+  end)
+  pcall(function()
+    local f = io.open(grGuardPath("running.txt"), "r")
+    if not f then return end
+    local op = f:read("*l")
+    f:close()
+    os.remove(grGuardPath("running.txt"))
+    if op and op ~= "" and not GR_GUARD.disabled[op] then
+      GR_GUARD.disabled[op] = true
+      local w = io.open(grGuardPath("disabled.txt"), "a")
+      if w then w:write(op .. "\n") w:close() end
+      print("[Glitch Rig] Resolve stopped during '" .. op .. "' last time, so it is switched off now.")
+      print("[Glitch Rig] To try it again delete " .. grGuardPath("disabled.txt"))
+    end
+  end)
+end
+-- Runs fn under the guard; returns nil when the step is switched off.
+local function grGuarded(op, fn)
+  grGuardLoad()
+  if GR_GUARD.disabled[op] then return nil end
+  local n = (GR_GUARD.runs[op] or 0) + 1
+  GR_GUARD.runs[op] = n
+  local marked = false
+  if n <= 3 then
+    pcall(function()
+      local f = io.open(grGuardPath("running.txt"), "w")
+      if f then f:write(op) f:close() marked = true end
+    end)
+  end
+  local r = fn()
+  if marked then pcall(os.remove, grGuardPath("running.txt")) end
+  return r
+end
+
 -- Create one control; a failure is printed and the other controls still get made.
 local function grTry(id, fn)
   local ok, err = pcall(fn)
@@ -795,16 +854,24 @@ end
 GR_DEBUG = false
 local GR_CALLS = 0
 
--- Diagnostics: size and centre pixel of an image, printed to Workspace > Console.
-local function grProbe(label, img)
+-- Diagnostics printed to Workspace > Console for the first frames: the image
+-- size, plus the centre pixel for clip inputs (never for GPU results).
+local function grProbe(label, img, readPixel)
   if not GR_DEBUG then return end
   if not img then print("[Glitch Rig]   " .. label .. ": nil") return end
   local ok, msg = pcall(function()
     local w = img.Width or img.DataWindow:Width()
     local h = img.Height or img.DataWindow:Height()
-    local px = Pixel()
-    img:GetPixel(math.floor(w / 2), math.floor(h / 2), px)
-    return string.format("%dx%d centre=(%.3f, %.3f, %.3f, %.3f)", w, h, px.R, px.G, px.B, px.A)
+    local out = string.format("%dx%d", w, h)
+    if readPixel then
+      local px = grGuarded("probe", function()
+        local p = Pixel()
+        img:GetPixel(math.floor(w / 2), math.floor(h / 2), p)
+        return p
+      end)
+      if px then out = out .. string.format(" centre=(%.3f, %.3f, %.3f, %.3f)", px.R, px.G, px.B, px.A) end
+    end
+    return out
   end)
   print("[Glitch Rig]   " .. label .. ": " .. tostring(msg))
 end
@@ -889,19 +956,9 @@ local function grM(v, a, b) return a + (b - a) * v end
 
 local function grRound(v) return math.floor((v or 0) + 0.5) end
 
--- An output image like `like`, optionally at another size.
-local function grImage(comp, like, w, h)
-  if w then
-    local ok, img = pcall(function()
-      return Image({
-        IMG_Document = comp,
-        { IMG_Channel = "Red" }, { IMG_Channel = "Green" }, { IMG_Channel = "Blue" }, { IMG_Channel = "Alpha" },
-        IMG_Width = w, IMG_Height = h, IMG_XScale = like.XScale, IMG_YScale = like.YScale,
-        IMG_Depth = like.Depth, IMG_DeferAlloc = true,
-      })
-    end)
-    if ok and img then return img end
-  end
+-- An output image like `like` (always full size; small kernels just use the
+-- corner they need).
+local function grImage(comp, like)
   return Image({ IMG_Like = like, IMG_DeferAlloc = true })
 end
 
@@ -913,31 +970,33 @@ end
 
 -- Run one DCTL kernel. setp(p) fills the parameter block; inputs is a list of
 -- { kernelArgName, image }. Returns the output image (nil if it failed).
-local function grRun(req, comp, kname, code, pdecl, setp, inputs, like, w, h)
-  local out = grImage(comp, like, w, h)
-  local okNode, node = pcall(DVIPComputeNode, req, kname, code, kname .. "Params", pdecl)
-  if not okNode or not node then
-    print("[Glitch Rig] GPU kernels unavailable (DVIPComputeNode): " .. tostring(node))
-    return nil
-  end
-  local p = GR_PB[kname]
-  if not (p and pcall(function() setp(p); node:SetParamBlock(p) end)) then
-    p = node:GetParamBlock(pdecl)
-    setp(p)
-    node:SetParamBlock(p)
-    GR_PB[kname] = p
-  end
-  node:AddSampler("RowSampler", TEX_FILTER_MODE_LINEAR, TEX_ADDRESS_MODE_CLAMP, TEX_NORMALIZED_COORDS_TRUE)
-  for i = 1, #inputs do node:AddInput(inputs[i][1], inputs[i][2]) end
-  node:AddOutput("dst", out)
-  if not node:RunSession(req) then
-    print("[Glitch Rig] kernel " .. kname .. " failed:")
-    local okLog, log = pcall(function() return node:GetErrorLog() end)
-    print(tostring(okLog and log or "(no error log)"))
-    return nil
-  end
-  grProbe(kname, out)
-  return out
+local function grRun(req, comp, kname, code, pdecl, setp, inputs, like)
+  return grGuarded("kernel " .. kname, function()
+    local out = grImage(comp, like)
+    local okNode, node = pcall(DVIPComputeNode, req, kname, code, kname .. "Params", pdecl)
+    if not okNode or not node then
+      print("[Glitch Rig] GPU kernels unavailable (DVIPComputeNode): " .. tostring(node))
+      return nil
+    end
+    local p = GR_PB[kname]
+    if not (p and pcall(function() setp(p); node:SetParamBlock(p) end)) then
+      p = node:GetParamBlock(pdecl)
+      setp(p)
+      node:SetParamBlock(p)
+      GR_PB[kname] = p
+    end
+    node:AddSampler("RowSampler", TEX_FILTER_MODE_LINEAR, TEX_ADDRESS_MODE_CLAMP, TEX_NORMALIZED_COORDS_TRUE)
+    for i = 1, #inputs do node:AddInput(inputs[i][1], inputs[i][2]) end
+    node:AddOutput("dst", out)
+    if not node:RunSession(req) then
+      print("[Glitch Rig] kernel " .. kname .. " failed:")
+      local okLog, log = pcall(function() return node:GetErrorLog() end)
+      print(tostring(okLog and log or "(no error log)"))
+      return nil
+    end
+    grProbe(kname, out)
+    return out
+  end)
 end
 
 local function grCommon(p, w, h, t, scale)
@@ -950,9 +1009,11 @@ end
 
 -- The input image at another frame (history for trails), or nil.
 local function grAt(input, req, time)
-  local ok, img = pcall(function() return input:GetSource(time, req:GetFlags()) end)
-  if ok and img then return img end
-  return nil
+  return grGuarded("history", function()
+    local ok, img = pcall(function() return input:GetSource(time, req:GetFlags()) end)
+    if ok and img then return img end
+    return nil
+  end)
 end
 
 -- Glow, light streaks, RGB split, scanlines, grain, vignette, flicker, grade.
@@ -1162,8 +1223,8 @@ function Process(req)
   grMain(self, req, "GR_Transition", function()
   local A = GR_IMG.Background:GetValue(req)
   local Bi = GR_IMG.Foreground:GetValue(req)
-  grProbe("Background (A)", A)
-  grProbe("Foreground (B)", Bi)
+  grProbe("Background (A)", A, true)
+  grProbe("Foreground (B)", Bi, true)
   if not Bi then grOut(req, A) return end
   if not A then grOut(req, Bi) return end
   local W, H = grSize(A)

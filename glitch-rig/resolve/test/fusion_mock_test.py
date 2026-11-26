@@ -229,7 +229,34 @@ def check_setting(path, fuse_ids):
     return len(list(macro.Inputs.keys()))
 
 
+def guard_test():
+    """A marker left by a crash must switch that step off on the next start."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    os.environ['TMPDIR'] = tmp
+    for k in ('TEMP', 'TMP'):
+        os.environ.pop(k, None)
+    open(os.path.join(tmp, 'glitchrig-running.txt'), 'w').write('kernel GRTrans')
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(MOCK)
+    lua.execute(open(os.path.join(ROOT, 'Fuses', 'GlitchRig', 'GR_Transition.fuse'), encoding='utf-8').read())
+    G = lua.globals()
+    G.Create()
+    G.MOCK.images['Background'] = G.MOCK.mkimg(1920, 1080)
+    G.MOCK.images['Foreground'] = G.MOCK.mkimg(1920, 1080)
+    req = lua.table_from({'Time': 12}); req.GetFlags = lua.eval('function(self) return 0 end')
+    G.Process(req)
+    runs = list(G.MOCK.runs.values())
+    assert 'GRTrans' not in runs, 'crashed kernel still ran'
+    assert G.MOCK.out is not None, 'no pass-through output'
+    assert 'kernel GRTrans' in open(os.path.join(tmp, 'glitchrig-disabled.txt')).read()
+    assert not os.path.exists(os.path.join(tmp, 'glitchrig-running.txt')), 'marker left behind'
+    print('crash guard ok: a crashed kernel is switched off and the clip passes through')
+
+
 def main():
+    import tempfile
+    os.environ['TMPDIR'] = tempfile.mkdtemp()
     fuse_ids = {}
     for path in sorted(glob.glob(os.path.join(ROOT, 'Fuses', 'GlitchRig', '*.fuse'))):
         name, ids, runs, kernels = run_fuse(path)
@@ -240,6 +267,7 @@ def main():
         check_setting(path, fuse_ids)
         n += 1
     print(f'templates ok: {n}')
+    guard_test()
 
 
 if __name__ == '__main__':

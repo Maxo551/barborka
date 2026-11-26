@@ -110,7 +110,7 @@ SKIP.add('size@title');
 const PROCESS = {
   GR_DotMatrix: `
   local src = GR_IMG.Input:GetValue(req)
-  grProbe("Input", src)
+  grProbe("Input", src, true)
   local W, H = grSize(src)
   local P = grValues(req)
   local rs = grRange(self, P)
@@ -152,7 +152,7 @@ const PROCESS = {
 
   GR_Grade: `
   local src = GR_IMG.Input:GetValue(req)
-  grProbe("Input", src)
+  grProbe("Input", src, true)
   local W, H = grSize(src)
   local P = grValues(req)
   local rs = grRange(self, P)
@@ -181,7 +181,7 @@ const PROCESS = {
 
   GR_Trip: `
   local src = GR_IMG.Input:GetValue(req)
-  grProbe("Input", src)
+  grProbe("Input", src, true)
   local W, H = grSize(src)
   local P = grValues(req)
   local rs = grRange(self, P)
@@ -212,7 +212,7 @@ const PROCESS = {
 
   GR_Echo: `
   local src = GR_IMG.Input:GetValue(req)
-  grProbe("Input", src)
+  grProbe("Input", src, true)
   local W, H = grSize(src)
   local P = grValues(req)
   local rs = grRange(self, P)
@@ -235,8 +235,8 @@ const PROCESS = {
   GR_Transition: `
   local A = GR_IMG.Background:GetValue(req)
   local Bi = GR_IMG.Foreground:GetValue(req)
-  grProbe("Background (A)", A)
-  grProbe("Foreground (B)", Bi)
+  grProbe("Background (A)", A, true)
+  grProbe("Foreground (B)", Bi, true)
   if not Bi then grOut(req, A) return end
   if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
@@ -267,8 +267,8 @@ const PROCESS = {
   GR_Datamosh: `
   local A = GR_IMG.Background:GetValue(req)
   local Bi = GR_IMG.Foreground:GetValue(req)
-  grProbe("Background (A)", A)
-  grProbe("Foreground (B)", Bi)
+  grProbe("Background (A)", A, true)
+  grProbe("Foreground (B)", Bi, true)
   if not Bi then grOut(req, A) return end
   if not A then grOut(req, Bi) return end
   local W, H = grSize(A)
@@ -303,7 +303,7 @@ const PROCESS = {
       local flow = grRun(req, self.Comp, "GRMoshMatch", GR_K.GRMoshMatch, GR_P.GRMoshMatch, function(p)
         grCommon(p, bw, bh, tt, s)
         p.bs = bs; p.R = R; p.fullW = W; p.fullH = H
-      end, { { "cur", Bf }, { "prev", st.prevB } }, Bf, bw, bh)
+      end, { { "cur", Bf }, { "prev", st.prevB } }, Bf)
       if flow then
         local fw, fh = grSize(flow)
         local moved = grRun(req, self.Comp, "GRMoshAdvect", GR_K.GRMoshAdvect, GR_P.GRMoshAdvect, function(p)
@@ -319,20 +319,17 @@ const PROCESS = {
     return st
   end
 
-  -- the plate is the outgoing clip at the start of the transition; frames are
-  -- built in order and cached, so playback costs one step per frame
-  GR_MOSH = GR_MOSH or {}
-  local st = GR_MOSH.state
-  if not st or st.time ~= req.Time - 1 or st.rs ~= rs then
-    local plate = grAt(GR_IMG.Background, req, rs) or A
-    st = { time = rs, rs = rs, mosh = plate, prevB = grAt(GR_IMG.Foreground, req, rs) or Bi, frame = 0 }
-    for f = rs + 1, req.Time - 1 do
-      local Bf = grAt(GR_IMG.Foreground, req, f)
-      if Bf then st = step(st, f, Bf) end
-    end
+  -- The plate is the outgoing clip at the start of the transition, pushed by
+  -- the incoming clip's motion over the last few frames. Nothing is kept
+  -- between frames (Resolve may recycle images), so the window is rebuilt.
+  local WINDOW = 8
+  local first = math.max(rs, req.Time - WINDOW)
+  local st = { mosh = grAt(GR_IMG.Background, req, rs) or A, prevB = grAt(GR_IMG.Foreground, req, first) or Bi, frame = first - rs }
+  for f = first + 1, req.Time - 1 do
+    local Bf = grAt(GR_IMG.Foreground, req, f)
+    if Bf then st = step(st, f, Bf) end
   end
   st = step(st, req.Time, Bi)
-  GR_MOSH.state = st
   local t = (req.Time - rs) / fps
   local look = grRun(req, self.Comp, "GRMoshLook", GR_K.GRMoshLook, GR_P.GRMoshLook, function(p)
     grCommon(p, W, H, t, s)
@@ -344,7 +341,7 @@ const PROCESS = {
 
   GR_Title: `
   local src = GR_IMG.Input:GetValue(req)
-  grProbe("Input", src)
+  grProbe("Input", src, true)
   local W, H = grSize(src)
   local P = grValues(req)
   local rs, re = grRange(self, P)
