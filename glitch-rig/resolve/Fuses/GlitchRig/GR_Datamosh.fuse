@@ -954,6 +954,12 @@ GR_TITLE_COLOURS = { { 1, 0.188235, 0.270588 }, { 1, 0.603922, 0.121569 }, { 1, 
 -- GLITCH RIG — shared Lua runtime, inlined into every generated .fuse.
 
 local GR_PB = {}
+
+-- Create one control; a failure is printed and the other controls still get made.
+local function grTry(id, fn)
+  local ok, err = pcall(fn)
+  if not ok then print("[Glitch Rig] control " .. id .. " not created: " .. tostring(err)) end
+end
 GR_DEBUG = false
 local GR_CALLS = 0
 
@@ -998,6 +1004,24 @@ local function grMain(tool, req, name, body)
   end
 end
 
+-- In Resolve 20 GetValue() returns LuaJIT FFI objects (cdata "struct Number *"),
+-- not Lua numbers, so always unwrap .Value and coerce numbers.
+local function grUnwrap(v)
+  if v == nil or type(v) == "number" or type(v) == "string" then return v end
+  local ok, inner = pcall(function() return v.Value end)
+  if ok and inner ~= nil then v = inner end
+  if type(v) == "number" or type(v) == "string" then return v end
+  return tonumber(v) -- a cdata double becomes a number; anything else nil
+end
+
+local function grValues(req)
+  local P = {}
+  for id, inp in pairs(GR_IN) do
+    P[id] = grUnwrap(inp:GetValue(req))
+  end
+  return P
+end
+
 -- The comp's frame range, so effects animate from the start of the clip and
 -- transitions know how far through they are. Resolve's Fuse API has no
 -- Comp:GetAttrs(), so the templates feed the range in through expressions
@@ -1005,12 +1029,12 @@ end
 local function grRange(tool, P)
   local rs, re
   -- both default to -1, and stay 0/0 if the expressions did not evaluate
-  if P and P.rangeStart and P.rangeEnd and P.rangeEnd > P.rangeStart then
+  if P and type(P.rangeStart) == "number" and type(P.rangeEnd) == "number" and P.rangeEnd > P.rangeStart then
     rs, re = P.rangeStart, P.rangeEnd
   end
   if not rs then
     pcall(function()
-      local a, b = tool.Comp.RenderStart, tool.Comp.RenderEnd
+      local a, b = tonumber(grUnwrap(tool.Comp.RenderStart)), tonumber(grUnwrap(tool.Comp.RenderEnd))
       if type(a) == "number" and type(b) == "number" and b > a then rs, re = a, b end
     end)
   end
@@ -1148,122 +1172,12 @@ local function grFinish(req, comp, img, t, o)
 end
 
 -- Read every registered control into a plain table: P.size, P.chars ...
-local function grValues(req)
-  local P = {}
-  for id, inp in pairs(GR_IN) do
-    local v = inp:GetValue(req)
-    if type(v) == "table" or type(v) == "userdata" then v = v.Value end
-    P[id] = v
-  end
-  return P
-end
+
 
 
 function Create()
   GR_IN = {}
   GR_IMG = {}
-  GR_IN["variant"] = self:AddInput("VARIANT", "variant", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "MELT" },
-    { CCS_AddString = "BLOOM" },
-    { CCS_AddString = "NEON" },
-    { CCS_AddString = "ACID" },
-  })
-  GR_IN["drip"] = self:AddInput("DRIP", "drip", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "CheckboxControl",
-    INP_Default = 0,
-    INP_Integer = true,
-  })
-  GR_IN["blend"] = self:AddInput("BLEND", "blend", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["blockSize"] = self:AddInput("BLOCK SIZE", "blockSize", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 1,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "SMALL" },
-    { CCS_AddString = "MEDIUM" },
-    { CCS_AddString = "LARGE" },
-  })
-  GR_IN["intensity"] = self:AddInput("INTENSITY", "intensity", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["frames"] = self:AddInput("FRAMES", "frames", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "SMOOTH" },
-    { CCS_AddString = "CHOPPY" },
-    { CCS_AddString = "STUTTER" },
-  })
-  GR_IN["flashes"] = self:AddInput("FLASHES", "flashes", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "ON" },
-    { CCS_AddString = "OFF" },
-  })
-  GR_IN["motion"] = self:AddInput("MOTION", "motion", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "OWN" },
-    { CCS_AddString = "SWIRL" },
-    { CCS_AddString = "SHAKE" },
-  })
-  GR_IN["colourSpeed"] = self:AddInput("COLOUR SPEED", "colourSpeed", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["autoProgress"] = self:AddInput("AUTO PROGRESS", "autoProgress", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "CheckboxControl",
-    INP_Default = 1,
-    INP_Integer = true,
-  })
-  GR_IN["progress"] = self:AddInput("PROGRESS", "progress", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["rangeStart"] = self:AddInput("Range Start", "rangeStart", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = -1,
-    IC_Visible = false,
-  })
-  GR_IN["rangeEnd"] = self:AddInput("Range End", "rangeEnd", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = -1,
-    IC_Visible = false,
-  })
   GR_IMG["Background"] = self:AddInput("Background", "Background", {
     LINKID_DataType = "Image",
     LINK_Main = 1,
@@ -1278,6 +1192,134 @@ function Create()
     LINKID_DataType = "Image",
     LINK_Main = 1,
   })
+  grTry("variant", function()
+    GR_IN["variant"] = self:AddInput("VARIANT", "variant", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "MELT" },
+      { CCS_AddString = "BLOOM" },
+      { CCS_AddString = "NEON" },
+      { CCS_AddString = "ACID" },
+    })
+  end)
+  grTry("drip", function()
+    GR_IN["drip"] = self:AddInput("DRIP", "drip", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "CheckboxControl",
+      INP_Default = 0,
+      INP_Integer = true,
+    })
+  end)
+  grTry("blend", function()
+    GR_IN["blend"] = self:AddInput("BLEND", "blend", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("blockSize", function()
+    GR_IN["blockSize"] = self:AddInput("BLOCK SIZE", "blockSize", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 1,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "SMALL" },
+      { CCS_AddString = "MEDIUM" },
+      { CCS_AddString = "LARGE" },
+    })
+  end)
+  grTry("intensity", function()
+    GR_IN["intensity"] = self:AddInput("INTENSITY", "intensity", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("frames", function()
+    GR_IN["frames"] = self:AddInput("FRAMES", "frames", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "SMOOTH" },
+      { CCS_AddString = "CHOPPY" },
+      { CCS_AddString = "STUTTER" },
+    })
+  end)
+  grTry("flashes", function()
+    GR_IN["flashes"] = self:AddInput("FLASHES", "flashes", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "ON" },
+      { CCS_AddString = "OFF" },
+    })
+  end)
+  grTry("motion", function()
+    GR_IN["motion"] = self:AddInput("MOTION", "motion", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "OWN" },
+      { CCS_AddString = "SWIRL" },
+      { CCS_AddString = "SHAKE" },
+    })
+  end)
+  grTry("colourSpeed", function()
+    GR_IN["colourSpeed"] = self:AddInput("COLOUR SPEED", "colourSpeed", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("autoProgress", function()
+    GR_IN["autoProgress"] = self:AddInput("AUTO PROGRESS", "autoProgress", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "CheckboxControl",
+      INP_Default = 1,
+      INP_Integer = true,
+    })
+  end)
+  grTry("progress", function()
+    GR_IN["progress"] = self:AddInput("PROGRESS", "progress", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("rangeStart", function()
+    GR_IN["rangeStart"] = self:AddInput("Range Start", "rangeStart", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = -1,
+      IC_Visible = false,
+    })
+  end)
+  grTry("rangeEnd", function()
+    GR_IN["rangeEnd"] = self:AddInput("Range End", "rangeEnd", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = -1,
+      IC_Visible = false,
+    })
+  end)
 end
 
 function Process(req)

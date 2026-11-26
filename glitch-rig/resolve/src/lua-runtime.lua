@@ -1,6 +1,12 @@
 -- GLITCH RIG — shared Lua runtime, inlined into every generated .fuse.
 
 local GR_PB = {}
+
+-- Create one control; a failure is printed and the other controls still get made.
+local function grTry(id, fn)
+  local ok, err = pcall(fn)
+  if not ok then print("[Glitch Rig] control " .. id .. " not created: " .. tostring(err)) end
+end
 GR_DEBUG = false
 local GR_CALLS = 0
 
@@ -45,6 +51,24 @@ local function grMain(tool, req, name, body)
   end
 end
 
+-- In Resolve 20 GetValue() returns LuaJIT FFI objects (cdata "struct Number *"),
+-- not Lua numbers, so always unwrap .Value and coerce numbers.
+local function grUnwrap(v)
+  if v == nil or type(v) == "number" or type(v) == "string" then return v end
+  local ok, inner = pcall(function() return v.Value end)
+  if ok and inner ~= nil then v = inner end
+  if type(v) == "number" or type(v) == "string" then return v end
+  return tonumber(v) -- a cdata double becomes a number; anything else nil
+end
+
+local function grValues(req)
+  local P = {}
+  for id, inp in pairs(GR_IN) do
+    P[id] = grUnwrap(inp:GetValue(req))
+  end
+  return P
+end
+
 -- The comp's frame range, so effects animate from the start of the clip and
 -- transitions know how far through they are. Resolve's Fuse API has no
 -- Comp:GetAttrs(), so the templates feed the range in through expressions
@@ -52,12 +76,12 @@ end
 local function grRange(tool, P)
   local rs, re
   -- both default to -1, and stay 0/0 if the expressions did not evaluate
-  if P and P.rangeStart and P.rangeEnd and P.rangeEnd > P.rangeStart then
+  if P and type(P.rangeStart) == "number" and type(P.rangeEnd) == "number" and P.rangeEnd > P.rangeStart then
     rs, re = P.rangeStart, P.rangeEnd
   end
   if not rs then
     pcall(function()
-      local a, b = tool.Comp.RenderStart, tool.Comp.RenderEnd
+      local a, b = tonumber(grUnwrap(tool.Comp.RenderStart)), tonumber(grUnwrap(tool.Comp.RenderEnd))
       if type(a) == "number" and type(b) == "number" and b > a then rs, re = a, b end
     end)
   end
@@ -195,12 +219,4 @@ local function grFinish(req, comp, img, t, o)
 end
 
 -- Read every registered control into a plain table: P.size, P.chars ...
-local function grValues(req)
-  local P = {}
-  for id, inp in pairs(GR_IN) do
-    local v = inp:GetValue(req)
-    if type(v) == "table" or type(v) == "userdata" then v = v.Value end
-    P[id] = v
-  end
-  return P
-end
+

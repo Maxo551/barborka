@@ -1140,6 +1140,12 @@ GR_TITLE_COLOURS = { { 1, 0.188235, 0.270588 }, { 1, 0.603922, 0.121569 }, { 1, 
 -- GLITCH RIG — shared Lua runtime, inlined into every generated .fuse.
 
 local GR_PB = {}
+
+-- Create one control; a failure is printed and the other controls still get made.
+local function grTry(id, fn)
+  local ok, err = pcall(fn)
+  if not ok then print("[Glitch Rig] control " .. id .. " not created: " .. tostring(err)) end
+end
 GR_DEBUG = false
 local GR_CALLS = 0
 
@@ -1184,6 +1190,24 @@ local function grMain(tool, req, name, body)
   end
 end
 
+-- In Resolve 20 GetValue() returns LuaJIT FFI objects (cdata "struct Number *"),
+-- not Lua numbers, so always unwrap .Value and coerce numbers.
+local function grUnwrap(v)
+  if v == nil or type(v) == "number" or type(v) == "string" then return v end
+  local ok, inner = pcall(function() return v.Value end)
+  if ok and inner ~= nil then v = inner end
+  if type(v) == "number" or type(v) == "string" then return v end
+  return tonumber(v) -- a cdata double becomes a number; anything else nil
+end
+
+local function grValues(req)
+  local P = {}
+  for id, inp in pairs(GR_IN) do
+    P[id] = grUnwrap(inp:GetValue(req))
+  end
+  return P
+end
+
 -- The comp's frame range, so effects animate from the start of the clip and
 -- transitions know how far through they are. Resolve's Fuse API has no
 -- Comp:GetAttrs(), so the templates feed the range in through expressions
@@ -1191,12 +1215,12 @@ end
 local function grRange(tool, P)
   local rs, re
   -- both default to -1, and stay 0/0 if the expressions did not evaluate
-  if P and P.rangeStart and P.rangeEnd and P.rangeEnd > P.rangeStart then
+  if P and type(P.rangeStart) == "number" and type(P.rangeEnd) == "number" and P.rangeEnd > P.rangeStart then
     rs, re = P.rangeStart, P.rangeEnd
   end
   if not rs then
     pcall(function()
-      local a, b = tool.Comp.RenderStart, tool.Comp.RenderEnd
+      local a, b = tonumber(grUnwrap(tool.Comp.RenderStart)), tonumber(grUnwrap(tool.Comp.RenderEnd))
       if type(a) == "number" and type(b) == "number" and b > a then rs, re = a, b end
     end)
   end
@@ -1334,317 +1358,12 @@ local function grFinish(req, comp, img, t, o)
 end
 
 -- Read every registered control into a plain table: P.size, P.chars ...
-local function grValues(req)
-  local P = {}
-  for id, inp in pairs(GR_IN) do
-    local v = inp:GetValue(req)
-    if type(v) == "table" or type(v) == "userdata" then v = v.Value end
-    P[id] = v
-  end
-  return P
-end
+
 
 
 function Create()
   GR_IN = {}
   GR_IMG = {}
-  GR_IN["mode"] = self:AddInput("CELL", "mode", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "DOTS" },
-    { CCS_AddString = "ORBS" },
-    { CCS_AddString = "GLYPH DENSITY" },
-    { CCS_AddString = "GLYPH RAIN" },
-    { CCS_AddString = "WORDS" },
-    { CCS_AddString = "LED" },
-  })
-  GR_IN["pmode"] = self:AddInput("PALETTE", "pmode", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "SOURCE" },
-    { CCS_AddString = "DUOTONE" },
-    { CCS_AddString = "HOLO" },
-    { CCS_AddString = "PRISM" },
-    { CCS_AddString = "HEAT" },
-    { CCS_AddString = "TRITONE" },
-  })
-  GR_IN["c0R"] = self:AddInput("COLOR 1 R", "c0R", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c0G"] = self:AddInput("COLOR 1 G", "c0G", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c0B"] = self:AddInput("COLOR 1 B", "c0B", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c1R"] = self:AddInput("COLOR 2 R", "c1R", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c1G"] = self:AddInput("COLOR 2 G", "c1G", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c1B"] = self:AddInput("COLOR 2 B", "c1B", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c2R"] = self:AddInput("COLOR 3 R", "c2R", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c2G"] = self:AddInput("COLOR 3 G", "c2G", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["c2B"] = self:AddInput("COLOR 3 B", "c2B", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["bg"] = self:AddInput("BACKGROUND", "bg", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.3,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["keep"] = self:AddInput("KEEP COLOR", "keep", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["invert"] = self:AddInput("INVERT", "invert", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "CheckboxControl",
-    INP_Default = 0,
-    INP_Integer = true,
-  })
-  GR_IN["stR"] = self:AddInput("STREAK R", "stR", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.8,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["stG"] = self:AddInput("STREAK G", "stG", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.9,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["stB"] = self:AddInput("STREAK B", "stB", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 1,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["size"] = self:AddInput("SIZE", "size", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["depth"] = self:AddInput("DEPTH", "depth", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["dotSize"] = self:AddInput("DOT SIZE", "dotSize", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["chars"] = self:AddInput("CHARACTERS", "chars", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "ComboControl",
-    INP_Default = 0,
-    INP_Integer = true,
-    ICD_Width = 1,
-    { CCS_AddString = "SYMBOLS" },
-    { CCS_AddString = "LETTERS" },
-    { CCS_AddString = "NUMBERS" },
-    { CCS_AddString = "BINARY" },
-    { CCS_AddString = "KANA" },
-    { CCS_AddString = "CODE" },
-    { CCS_AddString = "BLOCKS" },
-    { CCS_AddString = "ASCII" },
-    { CCS_AddString = "WORDS" },
-  })
-  GR_IN["rain"] = self:AddInput("CODE RAIN", "rain", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["sparkle"] = self:AddInput("SPARKLE", "sparkle", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["glow"] = self:AddInput("GLOW", "glow", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["streaks"] = self:AddInput("STREAKS", "streaks", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["rgb"] = self:AddInput("RGB SPLIT", "rgb", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["sparkleSize"] = self:AddInput("SPARKLE SIZE", "sparkleSize", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["shadows"] = self:AddInput("SHADOWS", "shadows", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["darkDetail"] = self:AddInput("DARK DETAIL", "darkDetail", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["brighten"] = self:AddInput("BRIGHTEN", "brighten", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["scanLine"] = self:AddInput("SCAN LINE", "scanLine", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["scanlines"] = self:AddInput("SCANLINES", "scanlines", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["grain"] = self:AddInput("GRAIN", "grain", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["vignette"] = self:AddInput("VIGNETTE", "vignette", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["flicker"] = self:AddInput("FLICKER", "flicker", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.25,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["lookColour"] = self:AddInput("LOOK COLOUR", "lookColour", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["rainSpeed"] = self:AddInput("RAIN SPEED", "rainSpeed", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = 0.5,
-    INP_MinScale = 0,
-    INP_MaxScale = 1,
-  })
-  GR_IN["words"] = self:AddInput("WORDS", "words", {
-    LINKID_DataType = "Text",
-    INPID_InputControl = "TextEditControl",
-    TEC_Lines = 1,
-    INP_Default = "GLITCH RIG",
-  })
-  GR_IN["rangeStart"] = self:AddInput("Range Start", "rangeStart", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = -1,
-    IC_Visible = false,
-  })
-  GR_IN["rangeEnd"] = self:AddInput("Range End", "rangeEnd", {
-    LINKID_DataType = "Number",
-    INPID_InputControl = "SliderControl",
-    INP_Default = -1,
-    IC_Visible = false,
-  })
   GR_IMG["Input"] = self:AddInput("Input", "Input", {
     LINKID_DataType = "Image",
     LINK_Main = 1,
@@ -1654,6 +1373,382 @@ function Create()
     LINKID_DataType = "Image",
     LINK_Main = 1,
   })
+  grTry("mode", function()
+    GR_IN["mode"] = self:AddInput("CELL", "mode", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "DOTS" },
+      { CCS_AddString = "ORBS" },
+      { CCS_AddString = "GLYPH DENSITY" },
+      { CCS_AddString = "GLYPH RAIN" },
+      { CCS_AddString = "WORDS" },
+      { CCS_AddString = "LED" },
+    })
+  end)
+  grTry("pmode", function()
+    GR_IN["pmode"] = self:AddInput("PALETTE", "pmode", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "SOURCE" },
+      { CCS_AddString = "DUOTONE" },
+      { CCS_AddString = "HOLO" },
+      { CCS_AddString = "PRISM" },
+      { CCS_AddString = "HEAT" },
+      { CCS_AddString = "TRITONE" },
+    })
+  end)
+  grTry("c0R", function()
+    GR_IN["c0R"] = self:AddInput("COLOR 1 R", "c0R", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c0G", function()
+    GR_IN["c0G"] = self:AddInput("COLOR 1 G", "c0G", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c0B", function()
+    GR_IN["c0B"] = self:AddInput("COLOR 1 B", "c0B", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c1R", function()
+    GR_IN["c1R"] = self:AddInput("COLOR 2 R", "c1R", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c1G", function()
+    GR_IN["c1G"] = self:AddInput("COLOR 2 G", "c1G", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c1B", function()
+    GR_IN["c1B"] = self:AddInput("COLOR 2 B", "c1B", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c2R", function()
+    GR_IN["c2R"] = self:AddInput("COLOR 3 R", "c2R", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c2G", function()
+    GR_IN["c2G"] = self:AddInput("COLOR 3 G", "c2G", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("c2B", function()
+    GR_IN["c2B"] = self:AddInput("COLOR 3 B", "c2B", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("bg", function()
+    GR_IN["bg"] = self:AddInput("BACKGROUND", "bg", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.3,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("keep", function()
+    GR_IN["keep"] = self:AddInput("KEEP COLOR", "keep", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("invert", function()
+    GR_IN["invert"] = self:AddInput("INVERT", "invert", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "CheckboxControl",
+      INP_Default = 0,
+      INP_Integer = true,
+    })
+  end)
+  grTry("stR", function()
+    GR_IN["stR"] = self:AddInput("STREAK R", "stR", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.8,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("stG", function()
+    GR_IN["stG"] = self:AddInput("STREAK G", "stG", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.9,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("stB", function()
+    GR_IN["stB"] = self:AddInput("STREAK B", "stB", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 1,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("size", function()
+    GR_IN["size"] = self:AddInput("SIZE", "size", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("depth", function()
+    GR_IN["depth"] = self:AddInput("DEPTH", "depth", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("dotSize", function()
+    GR_IN["dotSize"] = self:AddInput("DOT SIZE", "dotSize", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("chars", function()
+    GR_IN["chars"] = self:AddInput("CHARACTERS", "chars", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "ComboControl",
+      INP_Default = 0,
+      INP_Integer = true,
+      ICD_Width = 1,
+      { CCS_AddString = "SYMBOLS" },
+      { CCS_AddString = "LETTERS" },
+      { CCS_AddString = "NUMBERS" },
+      { CCS_AddString = "BINARY" },
+      { CCS_AddString = "KANA" },
+      { CCS_AddString = "CODE" },
+      { CCS_AddString = "BLOCKS" },
+      { CCS_AddString = "ASCII" },
+      { CCS_AddString = "WORDS" },
+    })
+  end)
+  grTry("rain", function()
+    GR_IN["rain"] = self:AddInput("CODE RAIN", "rain", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("sparkle", function()
+    GR_IN["sparkle"] = self:AddInput("SPARKLE", "sparkle", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("glow", function()
+    GR_IN["glow"] = self:AddInput("GLOW", "glow", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("streaks", function()
+    GR_IN["streaks"] = self:AddInput("STREAKS", "streaks", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("rgb", function()
+    GR_IN["rgb"] = self:AddInput("RGB SPLIT", "rgb", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("sparkleSize", function()
+    GR_IN["sparkleSize"] = self:AddInput("SPARKLE SIZE", "sparkleSize", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("shadows", function()
+    GR_IN["shadows"] = self:AddInput("SHADOWS", "shadows", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("darkDetail", function()
+    GR_IN["darkDetail"] = self:AddInput("DARK DETAIL", "darkDetail", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("brighten", function()
+    GR_IN["brighten"] = self:AddInput("BRIGHTEN", "brighten", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("scanLine", function()
+    GR_IN["scanLine"] = self:AddInput("SCAN LINE", "scanLine", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("scanlines", function()
+    GR_IN["scanlines"] = self:AddInput("SCANLINES", "scanlines", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("grain", function()
+    GR_IN["grain"] = self:AddInput("GRAIN", "grain", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("vignette", function()
+    GR_IN["vignette"] = self:AddInput("VIGNETTE", "vignette", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("flicker", function()
+    GR_IN["flicker"] = self:AddInput("FLICKER", "flicker", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.25,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("lookColour", function()
+    GR_IN["lookColour"] = self:AddInput("LOOK COLOUR", "lookColour", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("rainSpeed", function()
+    GR_IN["rainSpeed"] = self:AddInput("RAIN SPEED", "rainSpeed", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = 0.5,
+      INP_MinScale = 0,
+      INP_MaxScale = 1,
+    })
+  end)
+  grTry("words", function()
+    GR_IN["words"] = self:AddInput("WORDS", "words", {
+      LINKID_DataType = "Text",
+      INPID_InputControl = "TextEditControl",
+      TEC_Lines = 1,
+    })
+  end)
+  grTry("rangeStart", function()
+    GR_IN["rangeStart"] = self:AddInput("Range Start", "rangeStart", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = -1,
+      IC_Visible = false,
+    })
+  end)
+  grTry("rangeEnd", function()
+    GR_IN["rangeEnd"] = self:AddInput("Range End", "rangeEnd", {
+      LINKID_DataType = "Number",
+      INPID_InputControl = "SliderControl",
+      INP_Default = -1,
+      IC_Visible = false,
+    })
+  end)
 end
 
 function Process(req)
@@ -1668,7 +1763,8 @@ function Process(req)
   local glyphy = mode >= 2 and mode <= 4
   local cell = math.max(3, grRound(math.min(W, H) * grM(P.size, 0.004, 0.034) * (glyphy and 1.45 or 1)))
   local words = {}
-  for ch in string.upper(P.words or ""):gmatch(".") do words[#words + 1] = GR_CHARS[ch] or GR_CHARS[" "] end
+  local text = (type(P.words) == "string" and P.words ~= "") and P.words or "GLITCH RIG"
+  for ch in string.upper(text):gmatch(".") do words[#words + 1] = GR_CHARS[ch] or GR_CHARS[" "] end
   local img = grRun(req, self.Comp, "GRDot", GR_K.GRDot, GR_P.GRDot, function(p)
     grCommon(p, W, H, t, H / 540)
     p.cell = cell

@@ -119,7 +119,8 @@ const PROCESS = {
   local glyphy = mode >= 2 and mode <= 4
   local cell = math.max(3, grRound(math.min(W, H) * grM(P.size, 0.004, 0.034) * (glyphy and 1.45 or 1)))
   local words = {}
-  for ch in string.upper(P.words or ""):gmatch(".") do words[#words + 1] = GR_CHARS[ch] or GR_CHARS[" "] end
+  local text = (type(P.words) == "string" and P.words ~= "") and P.words or "GLITCH RIG"
+  for ch in string.upper(text):gmatch(".") do words[#words + 1] = GR_CHARS[ch] or GR_CHARS[" "] end
   local img = grRun(req, self.Comp, "GRDot", GR_K.GRDot, GR_P.GRDot, function(p)
     grCommon(p, W, H, t, H / 540)
     p.cell = cell
@@ -377,7 +378,9 @@ function controlsOf(name) {
 function luaInput(c) {
   const lines = [`  GR_IN[${luaStr(c.id)}] = self:AddInput(${luaStr(c.label)}, ${luaStr(c.id)}, {`];
   if (c.kind === 'text') {
-    lines.push('    LINKID_DataType = "Text",', '    INPID_InputControl = "TextEditControl",', '    TEC_Lines = 1,', `    INP_Default = ${luaStr(c.def)},`);
+    // no INP_Default: Resolve's FFI AddInput only takes a number there; the
+    // templates set the text and Process falls back to a default
+    lines.push('    LINKID_DataType = "Text",', '    INPID_InputControl = "TextEditControl",', '    TEC_Lines = 1,');
   } else if (c.kind === 'combo') {
     lines.push('    LINKID_DataType = "Number",', '    INPID_InputControl = "ComboControl",', `    INP_Default = ${c.def},`, '    INP_Integer = true,', '    ICD_Width = 1,');
     c.options.forEach((o) => lines.push(`    { CCS_AddString = ${luaStr(o)} },`));
@@ -436,12 +439,12 @@ ${RUNTIME}
 function Create()
   GR_IN = {}
   GR_IMG = {}
-${controlsOf(name).map(luaInput).join('\n')}
 ${imgInputs}
   OutImage = self:AddOutput("Output", "Output", {
     LINKID_DataType = "Image",
     LINK_Main = 1,
   })
+${controlsOf(name).map((c) => '  grTry(' + luaStr(c.id) + ', function()\n' + luaInput(c).replace(/^/gm, '  ') + '\n  end)').join('\n')}
 end
 
 function Process(req)

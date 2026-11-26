@@ -49,12 +49,16 @@ self = {
 }
 MOCK.inputs = {}
 function self:AddInput(label, id, attrs)
+  assert(attrs.INP_Default == nil or type(attrs.INP_Default) == "number", "AddInput " .. id .. ": INP_Default must be a number")
   local inp = { id = id, attrs = attrs }
   function inp:GetValue(req)
     if attrs.LINKID_DataType == "Image" then return MOCK.images[id] end
     local v = MOCK.values[id]
     if v == nil then v = attrs.INP_Default end
-    return { Value = v }
+    -- like Resolve's cdata Number: only .Value is usable, arithmetic fails
+    return setmetatable({ Value = v }, { __add = function() error("arithmetic on Number object") end,
+      __sub = function() error("arithmetic on Number object") end, __mul = function() error("arithmetic on Number object") end,
+      __lt = function() error("comparison on Number object") end, __le = function() error("comparison on Number object") end })
   end
   function inp:GetSource(t, flags)
     assert(attrs.LINKID_DataType == "Image", "GetSource on a control")
@@ -184,7 +188,7 @@ def run_fuse(path):
                 G.Process(req)
                 assert G.MOCK.out is not None, f'{name}: no output at t={t} {key}={v}'
                 runs += 1
-    errors = [l for l in G.MOCK.printed.values() if ' error: ' in l or 'failed' in l or 'unavailable' in l]
+    errors = [l for l in G.MOCK.printed.values() if ' error: ' in l or 'failed' in l or 'unavailable' in l or 'not created' in l]
     assert not errors, f'{name}: ' + errors[0]
     diag = [l for l in G.MOCK.printed.values() if l.startswith('[Glitch Rig]')]
     assert diag, f'{name}: no diagnostics printed'
